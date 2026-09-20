@@ -338,9 +338,7 @@ function App() {
       return renderSuppliersPage()
     }
 
-    if (currentPage === 'costing') {
-      return <CostingPage workbookPath={selectedWorkbook} />
-    }
+    // The Costing page is shown by the CostingTab block below.
 
     if (currentPage === 'costing') {
       return (

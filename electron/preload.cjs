@@ -30,4 +30,4 @@ const api = {
   },
 }
 
-contextBridge.exposeInMainWorld('logPro', api)
+contextB  contextBridge.exposeInMainWorld('logProDesktop', api);ridge.exposeInMainWorld('logPro', api)contextBridge.exposeInMainWcontextBridge.exposeInMainW
