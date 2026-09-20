@@ -21,12 +21,12 @@ const CURRENCY_LABELS: Record<Currency, string> = {
 }
 
 // Size of the drawing area (the chart scales to fit the panel).
-const CHART_WIDTH = 620
-const CHART_HEIGHT = 230
-const PAD_LEFT = 54
-const PAD_RIGHT = 14
-const PAD_TOP = 14
-const PAD_BOTTOM = 30
+const CHART_WIDTH = 480
+const CHART_HEIGHT = 104
+const PAD_LEFT = 46
+const PAD_RIGHT = 10
+const PAD_TOP = 8
+const PAD_BOTTOM = 22
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10)
@@ -152,8 +152,8 @@ export default function RateTrendChart() {
     const baseY = PAD_TOP + innerHeight
     const area = `${line} L${xs[xs.length - 1].toFixed(1)},${baseY} L${xs[0].toFixed(1)},${baseY} Z`
 
-    const ticks = [0, 1, 2, 3].map((step) => {
-      const value = low + ((high - low) * step) / 3
+    const ticks = [0, 1, 2].map((step) => {
+      const value = low + ((high - low) * step) / 2
       return {
         value,
         y: PAD_TOP + (1 - (value - low) / (high - low)) * innerHeight,
@@ -381,9 +381,8 @@ export default function RateTrendChart() {
           </svg>
 
           <p className="muted small">
-            Move your mouse over the chart to read a day&apos;s rate. A rising
-            line means the Australian dollar is getting stronger (1 AUD buys
-            more {label}). Source: European Central Bank reference rates, via
+            Rising line = stronger Australian dollar. Source: European Central
+            Bank reference rates, via
             frankfurter.dev. Published on business days.
           </p>
         </>

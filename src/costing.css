@@ -241,6 +241,66 @@
   }
 }
 
+/* Compact exchange rate chart (these rules override the earlier chart styles) */
+.rates-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.rate-trend {
+  padding: 10px 12px;
+}
+
+.rate-trend-controls {
+  gap: 6px 18px;
+  margin-bottom: 8px;
+}
+
+.rate-trend-stats {
+  grid-template-columns:
+    minmax(0, 0.9fr) minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 0.9fr)
+    minmax(0, 0.9fr);
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.rate-trend-stat {
+  padding: 4px 6px;
+}
+
+.rate-trend-stat span {
+  font-size: 0.68rem;
+}
+
+.rate-trend-stat strong {
+  font-size: 0.78rem;
+}
+
+.rate-trend-reading {
+  margin: 4px 0 2px;
+  font-size: 0.82rem;
+}
+
+.rate-trend .muted.small {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 1000px) {
+  .rates-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Saved costings table: left align every header and every value */
+.costing-table.history-table thead tr th,
+.costing-table.history-table tbody tr th,
+.costing-table.history-table tbody tr td {
+  text-align: left;
+  vertical-align: top;
+}
+
 /* Currency switch for the selling price */
 .segmented-wrap {
   display: flex;

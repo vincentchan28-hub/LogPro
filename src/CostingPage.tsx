@@ -497,6 +497,8 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   const localLabel = CURRENCY_LABELS[local]
   const localDecimals = local === 'JPY' || local === 'KRW' ? 2 : 4
   const tooExpensive = result !== null && result.recommendedAud < 0
+  // True when the number in the Tonnage per box is the saved default.
+  const tonnageIsDefault = tonnagePerBox !== '' && tonnagePerBox === defaultTonnage
 
   return (
     <section className="page-content costing-page">
@@ -653,7 +655,7 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
 
           {!localIsUsd && (
             <div className="segmented-wrap">
-              <span>Type the selling price in:</span>
+              <span>Selling Price:</span>
               <div className="segmented">
                 <button
                   type="button"
@@ -691,11 +693,19 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
                 parseAmount(tonnagePerBox) <= 0 || tonnagePerBox === defaultTonnage
               }
               title="Remember this tonnage and fill it in every time you open Costing"
-              style={{ padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+              style={{
+                padding: '4px 10px',
+                fontSize: '0.78rem',
+                whiteSpace: 'nowrap',
+                borderRadius: '6px',
+                color: '#0369a1',
+                background: tonnageIsDefault ? '#e0f2fe' : 'transparent',
+                border: tonnageIsDefault ? '1px solid #7dd3fc' : '1px solid #bae6fd',
+                cursor: tonnageIsDefault ? 'default' : 'pointer',
+                opacity: parseAmount(tonnagePerBox) <= 0 ? 0.5 : 1,
+              }}
             >
-              {tonnagePerBox !== '' && tonnagePerBox === defaultTonnage
-                ? '✓ Default saved'
-                : 'Set as default'}
+              {tonnageIsDefault ? '✓ Default' : 'Set default'}
             </button>
           </label>
         </div>
