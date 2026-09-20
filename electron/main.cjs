@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
@@ -314,6 +314,403 @@ ipcMain.handle('supplier:save', async (_event, workbookPath, supplier) => {
     return {
       suppliers: [],
       error: friendlyError(saveError, 'save the supplier'),
+    };
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Exchange rates. Both sources are free and need no account or key.
+// 1st choice: Reserve Bank of Australia (RBA). 2nd choice: European Central Bank.
+// ---------------------------------------------------------------------------
+const RATE_CURRENCIES = ['USD', 'CNY', 'JPY', 'KRW'];
+const RBA_URL = 'https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv';
+
+const MONTH_NUMBERS = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+function withTimeout(promise, milliseconds, what) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${what} took too long to answer`)),
+      milliseconds,
+    );
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function downloadText(url) {
+  const response = await withTimeout(net.fetch(url), 15000, url);
+
+  if (!response.ok) {
+    throw new Error(`${url} answered with status ${response.status}`);
+  }
+
+  return withTimeout(response.text(), 15000, url);
+}
+
+function splitCsvLine(line) {
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (const character of line) {
+    if (character === '"') {
+      inQuotes = !inQuotes;
+    } else if (character === ',' && !inQuotes) {
+      cells.push(current.trim());
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+
+  cells.push(current.trim());
+  return cells;
+}
+
+function parseRbaDate(text) {
+  const clean = String(text || '').trim();
+
+  let match = /^(\d{1,2})[-\s]([A-Za-z]{3})[A-Za-z]*[-\s](\d{2,4})$/.exec(clean);
+  if (match) {
+    const month = MONTH_NUMBERS[match[2].toLowerCase()];
+    let year = Number(match[3]);
+    if (year < 100) {
+      year += 2000;
+    }
+    return month === undefined ? NaN : Date.UTC(year, month, Number(match[1]));
+  }
+
+  match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(clean);
+  if (match) {
+    return Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  }
+
+  match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean);
+  if (match) {
+    return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+
+  return NaN;
+}
+
+// Reads the RBA table. It finds each currency by the "Units" row (or the
+// "Title" row) so it does not depend on the column order.
+function parseRbaCsv(text) {
+  const rows = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map(splitCsvLine);
+
+  const unitsRow = rows.find((row) => String(row[0]).toLowerCase() === 'units');
+  const titleRow = rows.find((row) => String(row[0]).toLowerCase() === 'title');
+  const headerLength = Math.max(
+    unitsRow ? unitsRow.length : 0,
+    titleRow ? titleRow.length : 0,
+  );
+
+  const columnFor = {};
+
+  for (let column = 1; column < headerLength; column += 1) {
+    const unit = unitsRow ? String(unitsRow[column] || '').toUpperCase() : '';
+    const title = titleRow ? String(titleRow[column] || '') : '';
+    const fromTitle = /A\$\s*1\s*=\s*([A-Z]{3})\b/.exec(title);
+    const code = RATE_CURRENCIES.includes(unit)
+      ? unit
+      : fromTitle
+        ? fromTitle[1]
+        : '';
+
+    if (RATE_CURRENCIES.includes(code) && columnFor[code] === undefined) {
+      columnFor[code] = column;
+    }
+  }
+
+  const missing = RATE_CURRENCIES.filter((code) => columnFor[code] === undefined);
+  if (missing.length > 0) {
+    throw new Error(
+      `could not find these currencies in the RBA table: ${missing.join(', ')}`,
+    );
+  }
+
+  let best = null;
+
+  for (const row of rows) {
+    const time = parseRbaDate(row[0]);
+    if (Number.isNaN(time)) {
+      continue;
+    }
+
+    const values = {};
+    let complete = true;
+
+    for (const code of RATE_CURRENCIES) {
+      const value = Number(row[columnFor[code]]);
+      if (!(value > 0)) {
+        complete = false;
+        break;
+      }
+      values[code] = value;
+    }
+
+    if (complete && (best === null || time > best.time)) {
+      best = { time, values };
+    }
+  }
+
+  if (best === null) {
+    throw new Error('no complete row of rates was found in the RBA table');
+  }
+
+  return { time: best.time, perAud: { AUD: 1, ...best.values } };
+}
+
+// Safety check: refuse numbers that are clearly wrong (for example a shifted column).
+function checkRatesLookSane(perAud) {
+  const limits = {
+    USD: [0.2, 2],
+    CNY: [2, 15],
+    JPY: [30, 500],
+    KRW: [400, 4000],
+  };
+
+  for (const code of RATE_CURRENCIES) {
+    const value = perAud[code];
+    const [low, high] = limits[code];
+    if (!(value >= low && value <= high)) {
+      throw new Error(`the ${code} rate (${value}) looks wrong`);
+    }
+  }
+}
+
+async function loadRatesFromRba() {
+  const text = await downloadText(RBA_URL);
+  const parsed = parseRbaCsv(text);
+
+  return {
+    sourceName:
+      'Reserve Bank of Australia (RBA) - Exchange Rates F11.1, indicative daily rates',
+    sourceUrl: RBA_URL,
+    rateDate: new Date(parsed.time).toISOString().slice(0, 10),
+    perAud: parsed.perAud,
+  };
+}
+
+async function loadRatesFromEcb() {
+  const url = `https://api.frankfurter.dev/v1/latest?base=AUD&symbols=${RATE_CURRENCIES.join(',')}`;
+  const data = JSON.parse(await downloadText(url));
+  const perAud = { AUD: 1 };
+
+  for (const code of RATE_CURRENCIES) {
+    const value = Number(data && data.rates && data.rates[code]);
+    if (!(value > 0)) {
+      throw new Error(`the ${code} rate was missing`);
+    }
+    perAud[code] = value;
+  }
+
+  return {
+    sourceName: 'European Central Bank (ECB) reference rates, via frankfurter.dev',
+    sourceUrl: url,
+    rateDate: String((data && data.date) || ''),
+    perAud,
+  };
+}
+
+ipcMain.handle('rates:get', async () => {
+  const sources = [
+    { short: 'RBA', load: loadRatesFromRba },
+    { short: 'ECB', load: loadRatesFromEcb },
+  ];
+  const problems = [];
+
+  for (const source of sources) {
+    try {
+      const result = await source.load();
+      checkRatesLookSane(result.perAud);
+      console.log(`[rates] using ${source.short}, rates dated ${result.rateDate}`);
+      return { ok: true, error: '', problems, ...result };
+    } catch (error) {
+      const reason = error && error.message ? error.message : String(error);
+      console.log(`[rates] ${source.short} did not work: ${reason}`);
+      problems.push(`${source.short}: ${reason}`);
+    }
+  }
+
+  return {
+    ok: false,
+    error:
+      'LogPro could not get live exchange rates. Check your internet connection, or tick "Use my own exchange rates" and type them in.',
+    problems,
+    sourceName: '',
+    sourceUrl: '',
+    rateDate: '',
+    perAud: null,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Costings (saved on the Costings sheet of the workbook)
+// ---------------------------------------------------------------------------
+const costingTextHeaders = [
+  'CostingReference',
+  'CreatedAt',
+  'Label',
+  'DestinationCountry',
+  'LocalCurrency',
+  'RateSource',
+  'RateDate',
+];
+
+const costingHeaders = [
+  'CostingReference',
+  'CreatedAt',
+  'Label',
+  'DestinationCountry',
+  'LocalCurrency',
+  'SellingPriceUSD',
+  'SellingPriceLocal',
+  'SellingPriceAUD',
+  'ClearanceAUD',
+  'SeaFreightAUD',
+  'TransportAUD',
+  'FumigationAUD',
+  'PackingAUD',
+  'TotalCostsAUD',
+  'MaxAffordableOfferAUD',
+  'MaxAffordableOfferUSD',
+  'TraderCommissionAUD',
+  'RecommendedOfferAUD',
+  'RecommendedOfferUSD',
+  'AudPerUsd',
+  'LocalPerUsd',
+  'RateSource',
+  'RateDate',
+];
+
+function normaliseCosting(row) {
+  const result = {};
+
+  for (const header of costingHeaders) {
+    const value = row[header];
+    result[header] = costingTextHeaders.includes(header)
+      ? String(value === undefined || value === null ? '' : value).trim()
+      : Number(value) || 0;
+  }
+
+  return result;
+}
+
+function readCostings(workbook) {
+  const worksheet = workbook.Sheets.Costings;
+
+  if (!worksheet) {
+    return [];
+  }
+
+  return XLSX.utils
+    .sheet_to_json(worksheet, { defval: '' })
+    .map(normaliseCosting)
+    .filter((row) => row.CostingReference !== '');
+}
+
+function writeCostings(workbook, rows) {
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: costingHeaders });
+
+  worksheet['!cols'] = costingHeaders.map(() => ({ wch: 22 }));
+  workbook.Sheets.Costings = worksheet;
+}
+
+function getNextCostingReference(rows) {
+  const usedNumbers = rows
+    .map((row) => String(row.CostingReference || ''))
+    .filter((reference) => reference.startsWith('COST-'))
+    .map((reference) => Number(reference.slice(5)))
+    .filter((number) => Number.isInteger(number) && number > 0);
+
+  const nextNumber =
+    usedNumbers.length === 0 ? 1 : Math.max(...usedNumbers) + 1;
+
+  return `COST-${String(nextNumber).padStart(4, '0')}`;
+}
+
+ipcMain.handle('costing:list', async (_event, workbookPath) => {
+  if (!workbookPath) {
+    return { costings: [], error: 'No workbook is open.' };
+  }
+
+  const { workbook, error } = openWorkbookFile(workbookPath);
+
+  if (!workbook) {
+    return { costings: [], error };
+  }
+
+  // Newest first.
+  return { costings: readCostings(workbook).reverse(), error: '' };
+});
+
+ipcMain.handle('costing:save', async (_event, workbookPath, costing) => {
+  if (!workbookPath) {
+    return { costings: [], error: 'No workbook is open.' };
+  }
+
+  if (!costing || typeof costing !== 'object') {
+    return { costings: [], error: 'There is nothing to save.' };
+  }
+
+  const clean = normaliseCosting(costing);
+
+  if (!clean.DestinationCountry) {
+    return { costings: [], error: 'Choose a destination country first.' };
+  }
+
+  if (!(clean.AudPerUsd > 0)) {
+    return {
+      costings: [],
+      error: 'The exchange rate is missing, so the costing was not saved.',
+    };
+  }
+
+  const { workbook, error } = openWorkbookFile(workbookPath);
+
+  if (!workbook) {
+    return { costings: [], error };
+  }
+
+  try {
+    const startedAt = Date.now();
+
+    await retryWhileLocked('backup', () =>
+      createBackupOncePerSession(workbookPath),
+    );
+
+    const rows = readCostings(workbook);
+
+    clean.CostingReference = getNextCostingReference(rows);
+    clean.CreatedAt = new Date().toISOString();
+    clean.Label = clean.Label.slice(0, 200);
+    rows.push(clean);
+
+    writeCostings(workbook, rows);
+
+    await retryWhileLocked('write', () =>
+      XLSX.writeFile(workbook, workbookPath),
+    );
+
+    console.log(
+      `[save costing] ${clean.CostingReference} written in ${Date.now() - startedAt} ms`,
+    );
+
+    return { costings: rows.reverse(), error: '' };
+  } catch (saveError) {
+    console.error('Could not save costing:', saveError);
+    return {
+      costings: [],
+      error: friendlyError(saveError, 'save the costing'),
     };
   }
 });

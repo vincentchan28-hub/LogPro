@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import './App.css'
+import CostingPage from './CostingPage'
 import {
   type Supplier,
   type Procurement,
@@ -334,6 +336,10 @@ function App() {
 
     if (currentPage === 'suppliers') {
       return renderSuppliersPage()
+    }
+
+    if (currentPage === 'costing') {
+      return <CostingPage workbookPath={selectedWorkbook} />
     }
 
     if (currentPage === 'costing') {

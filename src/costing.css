@@ -1,0 +1,294 @@
+/* Costing page. Uses the colours defined in App.css. */
+
+.costing-page {
+  display: grid;
+  gap: 20px;
+}
+
+.costing-page button {
+  width: auto;
+  padding: 10px 18px;
+}
+
+.costing-card {
+  padding: 22px 26px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.08);
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.card-heading h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.muted {
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+/* Country and note */
+.costing-top {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 18px;
+}
+
+.field-label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.field-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #7dd3fc;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.field-input:focus {
+  outline: 3px solid rgba(2, 132, 199, 0.25);
+  border-color: var(--primary);
+}
+
+/* Exchange rates */
+.rate-source {
+  margin: 8px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  font-size: 0.92rem;
+}
+
+.rate-line {
+  margin: 10px 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.status-pill {
+  margin-left: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fef08a;
+  color: #713f12;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+  cursor: pointer;
+}
+
+.check-label input {
+  width: 18px;
+  height: 18px;
+}
+
+.own-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 10px 0;
+}
+
+.own-rate-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.own-rate-label .yellow-input {
+  width: 110px;
+}
+
+/* Yellow input boxes */
+.yellow-input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: #fff3b0;
+  color: #422006;
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+}
+
+.yellow-input:focus {
+  outline: 3px solid rgba(245, 158, 11, 0.35);
+}
+
+/* Currency switch for the selling price */
+.segmented-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+}
+
+.costing-page .segmented button {
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--primary-dark);
+}
+
+.costing-page .segmented button:hover {
+  background: var(--primary-soft);
+}
+
+.costing-page .segmented button.selected {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.costing-page .segmented button.selected:hover {
+  background: var(--primary-dark);
+}
+
+/* The main table */
+.table-scroll {
+  overflow-x: auto;
+}
+
+.costing-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+}
+
+.costing-table th,
+.costing-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--primary-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.costing-table thead th {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.costing-table thead th:first-child,
+.costing-table tbody th {
+  text-align: left;
+}
+
+.costing-table tbody th {
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.costing-table .cell-entry {
+  width: 190px;
+  padding: 6px 10px;
+}
+
+.row-label {
+  display: block;
+}
+
+.row-hint {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.costing-table .row-total th,
+.costing-table .row-total td {
+  border-top: 2px solid var(--border);
+  background: #f4fafe;
+  font-weight: 700;
+}
+
+.costing-table .row-result th,
+.costing-table .row-result td {
+  background: #dcf1fd;
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.costing-table .negative {
+  color: var(--danger-text);
+}
+
+.history-table th,
+.history-table td {
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.history-table td:nth-child(3),
+.history-table td:nth-child(4),
+.history-table td:nth-child(2),
+.history-table td:last-child {
+  text-align: left;
+}
+
+/* Messages */
+.notice {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.notice-ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.notice-warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.notice-error {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+@media (max-width: 800px) {
+  .costing-top {
+    grid-template-columns: 1fr;
+  }
+}
