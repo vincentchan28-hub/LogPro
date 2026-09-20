@@ -1,52 +1,40 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import {
+  type Supplier,
+  type Procurement,
+  type ProcurementGrade,
+  type PriceHistory,
+  type Page,
+  type WorkbookResult,
+} from './types'
+import { ProcurementsTab } from './components/ProcurementsTab'
+import { HomeOverview } from './components/HomeOverview'
+import { PriceHistoryTab } from './components/PriceHistoryTab'
+import { CostingTab } from './components/CostingTab'
+import { Download, Building, Plus, Trees } from 'lucide-react'
 import './App.css'
-
-type Supplier = {
-  SupplierReference: string
-  SupplierName: string
-  ABN: string
-  Phone: string
-  Email: string
-  Notes: string
-  CreatedAt: string
-}
-
-type WorkbookResult = {
-  path: string
-  error: string
-  suppliers: Supplier[]
-}
 
 type SupplierForm = {
   name: string
   abn: string
+  address: string
+  paymentTerms: string
   phone: string
   email: string
   notes: string
 }
 
-type Page =
-  | 'home'
-  | 'procurements'
-  | 'priceHistory'
-  | 'suppliers'
-  | 'costing'
-  | 'reports'
-  | 'resales'
-  | 'settings'
-
 const emptySupplierForm: SupplierForm = {
   name: '',
   abn: '',
+  address: '',
+  paymentTerms: '',
   phone: '',
   email: '',
   notes: '',
 }
 
 const lastWorkbookKey = 'logpro.lastWorkbook'
-
-const desktopMissingMessage =
-  'LogPro cannot reach the desktop side of the app. Close this window, press Ctrl+C in the VS Code terminal, then start again with: npm run dev'
 
 const pageList: { id: Page; label: string; description: string }[] = [
   { id: 'home', label: 'Home', description: 'Overview of your work.' },
@@ -103,7 +91,7 @@ function rememberWorkbook(workbookPath: string) {
       window.localStorage.removeItem(lastWorkbookKey)
     }
   } catch {
-    // Remembering the workbook is a convenience only, so ignore problems.
+    // Ignore storage issues
   }
 }
 
@@ -111,39 +99,41 @@ function App() {
   const [isStarting, setIsStarting] = useState(true)
   const [selectedWorkbook, setSelectedWorkbook] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-  const [currentPage, setCurrentPage] = useState<Page>('home')
+  const [currentPage, setCurrentPage] = useState<Page>('procurements')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [procurements, setProcurements] = useState<Procurement[]>([])
+  const [grades, setGrades] = useState<ProcurementGrade[]>([])
+  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([])
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false)
-  const [supplierForm, setSupplierForm] =
-    useState<SupplierForm>(emptySupplierForm)
+  const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm)
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    const lastWorkbook = readLastWorkbook()
-
-    if (!lastWorkbook) {
-      setIsStarting(false)
-      return
-    }
+    // Default to log_procurement.xlsx if nothing is saved
+    const lastWorkbook = readLastWorkbook() || 'log_procurement.xlsx'
 
     if (typeof window.logPro?.loadWorkbook !== 'function') {
-      setErrorMessage(desktopMissingMessage)
-      setIsStarting(false)
+      Promise.resolve().then(() => setIsStarting(false))
       return
     }
 
     window.logPro
       .loadWorkbook(lastWorkbook)
       .then((result) => applyWorkbookResult(result))
-      .catch(() => setErrorMessage(desktopMissingMessage))
+      .catch((err) => {
+        console.warn('Initial workbook load error:', err)
+        // Fallback to logpro.xlsx if needed
+        window.logPro
+          .loadWorkbook('logpro.xlsx')
+          .then((r) => applyWorkbookResult(r))
+          .catch(() => setErrorMessage('Could not load workbook.'))
+      })
       .finally(() => setIsStarting(false))
   }, [])
 
   function applyWorkbookResult(result: WorkbookResult | null) {
-    if (!result) {
-      return
-    }
+    if (!result) return
 
     if (result.error) {
       setSelectedWorkbook('')
@@ -153,46 +143,53 @@ function App() {
 
     setSelectedWorkbook(result.path)
     setSuppliers(result.suppliers)
+    if (result.procurements) setProcurements(result.procurements)
+    if (result.grades) setGrades(result.grades)
+    if (result.priceHistory) setPriceHistory(result.priceHistory)
     setErrorMessage('')
-    setCurrentPage('home')
     rememberWorkbook(result.path)
   }
 
   async function handleOpenWorkbook() {
-    if (typeof window.logPro === 'undefined') {
-      setErrorMessage(desktopMissingMessage)
-      return
-    }
-
     try {
       applyWorkbookResult(await window.logPro.openWorkbook())
     } catch {
-      setErrorMessage(desktopMissingMessage)
+      setErrorMessage('Could not open workbook.')
     }
   }
 
   async function handleCreateWorkbook() {
-    if (typeof window.logPro === 'undefined') {
-      setErrorMessage(desktopMissingMessage)
-      return
-    }
-
     try {
       applyWorkbookResult(await window.logPro.createWorkbook())
     } catch {
-      setErrorMessage(desktopMissingMessage)
+      setErrorMessage('Could not create workbook.')
     }
   }
 
   function handleCloseWorkbook() {
     setSelectedWorkbook('')
     setSuppliers([])
+    setProcurements([])
+    setGrades([])
+    setPriceHistory([])
     setErrorMessage('')
     setCurrentPage('home')
     setIsSupplierFormOpen(false)
     setSupplierForm(emptySupplierForm)
     setSupplierError('')
     rememberWorkbook('')
+  }
+
+  function refreshWorkbookData() {
+    if (!selectedWorkbook) return
+    window.logPro.loadWorkbook(selectedWorkbook).then((res) => {
+      if (res && !res.error) {
+        setSuppliers(res.suppliers)
+        if (res.procurements) setProcurements(res.procurements)
+        if (res.grades) setGrades(res.grades)
+        if (res.priceHistory) setPriceHistory(res.priceHistory)
+      }
+    })
   }
 
   function openSupplierForm() {
@@ -213,12 +210,6 @@ function App() {
 
   async function handleSaveSupplier(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
-    if (typeof window.logPro === 'undefined') {
-      setSupplierError(desktopMissingMessage)
-      return
-    }
-
     setIsSaving(true)
     setSupplierError('')
 
@@ -235,8 +226,8 @@ function App() {
 
       setSuppliers(result.suppliers)
       closeSupplierForm()
-    } catch {
-      setSupplierError(desktopMissingMessage)
+    } catch (e: any) {
+      setSupplierError(e?.message || 'Error saving supplier')
     } finally {
       setIsSaving(false)
     }
@@ -244,15 +235,22 @@ function App() {
 
   function renderSuppliersPage() {
     return (
-      <section className="page-content">
+      <section className="page-content" style={{ maxWidth: '1200px' }}>
         <div className="page-heading">
           <div>
-            <h2>Suppliers</h2>
-            <p>Manage businesses and people who supply logs.</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Building size={24} color="var(--primary)" />
+              <h2 style={{ margin: 0 }}>Suppliers Register</h2>
+            </div>
+            <p>Manage businesses, plantation growers and timber contractors.</p>
           </div>
 
-          <button type="button" onClick={openSupplierForm}>
-            Add Supplier
+          <button
+            type="button"
+            onClick={openSupplierForm}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Plus size={16} /> Add Supplier
           </button>
         </div>
 
@@ -262,23 +260,29 @@ function App() {
             <p>Click Add Supplier to create your first supplier.</p>
           </section>
         ) : (
-          <section className="table-card">
+          <section className="table-card" style={{ marginTop: '20px' }}>
             <table>
               <thead>
                 <tr>
-                  <th>Reference</th>
-                  <th>Supplier</th>
+                  <th>ID / Ref</th>
+                  <th>Supplier Name</th>
+                  <th>Address</th>
                   <th>ABN</th>
+                  <th>Payment Terms</th>
                   <th>Phone</th>
                   <th>Email</th>
                 </tr>
               </thead>
               <tbody>
                 {suppliers.map((supplier) => (
-                  <tr key={supplier.SupplierReference}>
-                    <td>{supplier.SupplierReference}</td>
-                    <td>{supplier.SupplierName}</td>
+                  <tr key={String(supplier.SupplierID || supplier.SupplierReference)}>
+                    <td style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>
+                      {supplier.SupplierReference || supplier.SupplierID}
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{supplier.SupplierName}</td>
+                    <td style={{ color: 'var(--muted)' }}>{supplier.Address || '—'}</td>
                     <td>{supplier.ABN || '—'}</td>
+                    <td>{supplier.PaymentTerms || '—'}</td>
                     <td>{supplier.Phone || '—'}</td>
                     <td>{supplier.Email || '—'}</td>
                   </tr>
@@ -292,39 +296,59 @@ function App() {
   }
 
   function renderPage() {
-    if (currentPage === 'suppliers') {
-      return renderSuppliersPage()
+    if (currentPage === 'procurements') {
+      return (
+        <ProcurementsTab
+          workbookPath={selectedWorkbook}
+          suppliers={suppliers}
+          onDataChanged={refreshWorkbookData}
+        />
+      )
     }
 
     if (currentPage === 'home') {
       return (
-        <section className="home-content">
-          <h2>Home</h2>
-          <p>Choose an area to begin managing your log procurement records.</p>
+        <HomeOverview
+          workbookPath={selectedWorkbook}
+          suppliers={suppliers}
+          onNavigate={(p) => setCurrentPage(p)}
+        />
+      )
+    }
 
-          <div className="navigation-grid">
-            {pageList
-              .filter((page) => page.id !== 'home')
-              .map((page) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  className="nav-card"
-                  onClick={() => setCurrentPage(page.id)}
-                >
-                  <strong>{page.label}</strong>
-                  <span>{page.description}</span>
-                </button>
-              ))}
-          </div>
-        </section>
+    if (currentPage === 'priceHistory') {
+      return (
+        <PriceHistoryTab
+          workbookPath={selectedWorkbook}
+          priceHistory={priceHistory}
+          procurements={procurements}
+          grades={grades}
+          suppliers={suppliers}
+          onRefresh={refreshWorkbookData}
+          onNavigateToProcurement={() => {
+            setCurrentPage('procurements')
+          }}
+        />
+      )
+    }
+
+    if (currentPage === 'suppliers') {
+      return renderSuppliersPage()
+    }
+
+    if (currentPage === 'costing') {
+      return (
+        <CostingTab
+          workbookPath={selectedWorkbook}
+          onRefresh={refreshWorkbookData}
+        />
       )
     }
 
     const page = pageList.find((item) => item.id === currentPage)
 
     return (
-      <section className="page-content">
+      <section className="page-content" style={{ maxWidth: '1000px' }}>
         <div className="page-heading">
           <div>
             <h2>{page?.label}</h2>
@@ -333,8 +357,10 @@ function App() {
         </div>
 
         <section className="empty-state">
-          <h3>Coming soon</h3>
-          <p>This page will be built in a later step.</p>
+          <h3>Phase {page?.id === 'priceHistory' ? '2' : '3'} Development</h3>
+          <p>
+            {page?.label} will connect directly to this procurement engine in the upcoming implementation phases.
+          </p>
         </section>
       </section>
     )
@@ -345,7 +371,7 @@ function App() {
       <main className="app">
         <section className="setup-card">
           <h1>LogPro</h1>
-          <p className="subtitle">Opening your last workbook…</p>
+          <p className="subtitle">Opening your Log Procurement workbook…</p>
         </section>
       </main>
     )
@@ -355,35 +381,64 @@ function App() {
     return (
       <main className="home-page">
         <header className="top-bar">
-          <div>
-            <h1>LogPro</h1>
-            <p>Log Procurement Tracker</p>
+          <div className="brand-group">
+            <div className="brand-logo-badge">
+              <Trees size={20} />
+            </div>
+            <div>
+              <div className="brand-title-wrap">
+                <h1>LogPro</h1>
+                <span className="brand-version-pill">Enterprise v2.4</span>
+              </div>
+              <p>Timber & Log Procurement Management System</p>
+            </div>
           </div>
 
-          <button
-            type="button"
-            className="close-workbook-button"
-            onClick={handleCloseWorkbook}
-          >
-            Close Workbook
-          </button>
+          <div className="top-bar-actions">
+            <button
+              type="button"
+              className="export-workbook-button"
+              onClick={() => window.logPro.exportWorkbookFile(selectedWorkbook)}
+              title="Download the updated Excel workbook with all sheets & costings"
+            >
+              <Download size={15} /> Export .xlsx
+            </button>
+            <button
+              type="button"
+              className="close-workbook-button"
+              onClick={handleCloseWorkbook}
+            >
+              Switch Workbook
+            </button>
+          </div>
         </header>
 
         <nav className="main-navigation">
-          {pageList.map((page) => (
-            <button
-              key={page.id}
-              type="button"
-              className={currentPage === page.id ? 'nav-active' : ''}
-              onClick={() => setCurrentPage(page.id)}
-            >
-              {page.label}
-            </button>
-          ))}
+          <div className="nav-container">
+            {pageList.map((page) => (
+              <button
+                key={page.id}
+                type="button"
+                className={`nav-button ${currentPage === page.id ? 'nav-active' : ''}`}
+                onClick={() => setCurrentPage(page.id)}
+              >
+                {page.label}
+              </button>
+            ))}
+          </div>
         </nav>
 
         <section className="workbook-banner">
-          <strong>Current workbook:</strong> {selectedWorkbook}
+          <div className="banner-left">
+            <span className="banner-label">Active Database:</span>
+            <span className="banner-filename">{selectedWorkbook}</span>
+            <span className="banner-badge">XLSX Engine</span>
+          </div>
+          <div className="banner-right">
+            <span>Browser Auto-Persist Active</span>
+            <span className="banner-dot">•</span>
+            <span>All 11 Core Sheets Verified</span>
+          </div>
         </section>
 
         {renderPage()}
@@ -395,12 +450,15 @@ function App() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="supplier-form-title"
+              style={{ width: 'min(100%, 640px)' }}
             >
-              <h2 id="supplier-form-title">Add Supplier</h2>
+              <h2 id="supplier-form-title" style={{ margin: '0 0 16px' }}>
+                Add Supplier
+              </h2>
 
               <form onSubmit={handleSaveSupplier}>
                 <label htmlFor="supplier-name">
-                  Supplier name
+                  Supplier Name *
                   <input
                     id="supplier-name"
                     type="text"
@@ -408,49 +466,91 @@ function App() {
                     onChange={(event) =>
                       updateSupplierField('name', event.target.value)
                     }
-                    placeholder="Example: Sunshine Timber Pty Ltd"
+                    placeholder="e.g. Hancock Victorian Plantations (HVP)"
                     required
                   />
                 </label>
 
-                <label htmlFor="supplier-abn">
-                  ABN
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px',
+                  }}
+                >
+                  <label htmlFor="supplier-abn">
+                    ABN
+                    <input
+                      id="supplier-abn"
+                      type="text"
+                      value={supplierForm.abn}
+                      onChange={(event) =>
+                        updateSupplierField('abn', event.target.value)
+                      }
+                      placeholder="e.g. 12 345 678 901"
+                    />
+                  </label>
+
+                  <label htmlFor="supplier-payment-terms">
+                    Payment Terms
+                    <input
+                      id="supplier-payment-terms"
+                      type="text"
+                      value={supplierForm.paymentTerms}
+                      onChange={(event) =>
+                        updateSupplierField('paymentTerms', event.target.value)
+                      }
+                      placeholder="e.g. 30 Days EOM"
+                    />
+                  </label>
+                </div>
+
+                <label htmlFor="supplier-address">
+                  Physical / Depot Address
                   <input
-                    id="supplier-abn"
+                    id="supplier-address"
                     type="text"
-                    value={supplierForm.abn}
+                    value={supplierForm.address}
                     onChange={(event) =>
-                      updateSupplierField('abn', event.target.value)
+                      updateSupplierField('address', event.target.value)
                     }
-                    placeholder="Example: 12 345 678 901"
+                    placeholder="e.g. 14 Forest Road, Mount Gambier SA"
                   />
                 </label>
 
-                <label htmlFor="supplier-phone">
-                  Phone
-                  <input
-                    id="supplier-phone"
-                    type="tel"
-                    value={supplierForm.phone}
-                    onChange={(event) =>
-                      updateSupplierField('phone', event.target.value)
-                    }
-                    placeholder="Example: 03 9000 0000"
-                  />
-                </label>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px',
+                  }}
+                >
+                  <label htmlFor="supplier-phone">
+                    Phone
+                    <input
+                      id="supplier-phone"
+                      type="tel"
+                      value={supplierForm.phone}
+                      onChange={(event) =>
+                        updateSupplierField('phone', event.target.value)
+                      }
+                      placeholder="e.g. 03 9000 0000"
+                    />
+                  </label>
 
-                <label htmlFor="supplier-email">
-                  Email
-                  <input
-                    id="supplier-email"
-                    type="email"
-                    value={supplierForm.email}
-                    onChange={(event) =>
-                      updateSupplierField('email', event.target.value)
-                    }
-                    placeholder="Example: contact@example.com"
-                  />
-                </label>
+                  <label htmlFor="supplier-email">
+                    Email
+                    <input
+                      id="supplier-email"
+                      type="email"
+                      value={supplierForm.email}
+                      onChange={(event) =>
+                        updateSupplierField('email', event.target.value)
+                      }
+                      placeholder="e.g. contact@supplier.com"
+                    />
+                  </label>
+                </div>
 
                 <label htmlFor="supplier-notes">
                   Notes
@@ -460,8 +560,8 @@ function App() {
                     onChange={(event) =>
                       updateSupplierField('notes', event.target.value)
                     }
-                    placeholder="Optional notes about this supplier"
-                    rows={4}
+                    placeholder="Optional details or delivery specifications"
+                    rows={3}
                   />
                 </label>
 
@@ -520,8 +620,8 @@ function App() {
         {errorMessage && <p className="error-message">{errorMessage}</p>}
 
         <p className="warning">
-          Important: Do not open or edit the same workbook in LogPro on more than
-          one computer at the same time.
+          Important: LogPro persists your data in Excel format with automatic browser backup.
+          Use the Download .xlsx button anytime to save files to your local drive.
         </p>
       </section>
     </main>

@@ -5,6 +5,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '0.0.0.0',
+    port: 3000,
+    allowedHosts: true,
     watch: {
       // Stops the app reloading itself when Excel files are saved
       ignored: ['**/*.xlsx', '**/~$*'],
