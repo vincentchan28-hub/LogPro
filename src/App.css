@@ -191,7 +191,8 @@ button {
   position: sticky;
   top: 0;
   z-index: 1000;
-  width: 100%;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
   background: #ffffff;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
@@ -201,8 +202,8 @@ button {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: var(--app-shell-max-width);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 14px 20px;
   box-sizing: border-box;
   background: #0f172a;
@@ -309,8 +310,8 @@ button {
   display: flex;
   align-items: center;
   width: 100%;
-  max-width: var(--app-shell-max-width);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 8px 20px;
   box-sizing: border-box;
   background: #ffffff;
@@ -324,10 +325,17 @@ button {
   align-items: center;
   gap: 4px;
   width: 100%;
+  max-width: none;
+  margin: 0;
   background: #f1f5f9;
   padding: 4px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
+}
+
+.nav-button {
+  flex: 1 0 auto;
+  min-width: 110px;
 }
 
 .nav-button {
@@ -361,8 +369,8 @@ button {
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  max-width: var(--app-shell-max-width);
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 10px 20px;
   box-sizing: border-box;
   background: #f8fafc;

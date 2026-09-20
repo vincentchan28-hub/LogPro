@@ -89,9 +89,12 @@ type MoneyRowProps = {
   amountAud: number
   currencies: CurrencyCode[]
   rates: Rates | null
-  // When set, the yellow box sits in this currency's column.
   entry?: {
     currency: CurrencyCode
+    value: string
+    onChange: (text: string) => void
+  }
+  containerEntry?: {
     value: string
     onChange: (text: string) => void
   }
@@ -105,6 +108,7 @@ function MoneyRow({
   currencies,
   rates,
   entry,
+  containerEntry,
   style,
 }: MoneyRowProps) {
   return (
@@ -113,6 +117,37 @@ function MoneyRow({
         <span className="row-label">{label}</span>
         {hint && <span className="row-hint">{hint}</span>}
       </th>
+
+      <td className="cell-entry container-rate-cell">
+        {containerEntry ? (
+          <input
+            className="yellow-input"
+            type="text"
+            inputMode="decimal"
+            placeholder="0.00"
+            value={containerEntry.value}
+            onChange={(event) => containerEntry.onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                const inputs = Array.from(
+                  document.querySelectorAll<HTMLInputElement>(
+                    '.costing-table .yellow-input',
+                  ),
+                )
+                const currentIndex = inputs.indexOf(event.currentTarget)
+
+                if (currentIndex >= 0) {
+                  inputs[currentIndex + 1]?.focus()
+                }
+              }
+            }}
+            aria-label={`${label} container rate`}
+          />
+        ) : (
+          '—'
+        )}
+      </td>
 
       {currencies.map((currency) => {
         if (entry && entry.currency === currency) {
@@ -177,6 +212,13 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   const [useOwnRates, setUseOwnRates] = useState(false)
   const [ownAudPerUsd, setOwnAudPerUsd] = useState('')
   const [ownLocalPerUsd, setOwnLocalPerUsd] = useState('')
+  const [tonnagePerBox, setTonnagePerBox] = useState('')
+  const [containerRates, setContainerRates] = useState<Record<'seaFreight' | 'transport' | 'fumigation' | 'packing', string>>({
+    seaFreight: '',
+    transport: '',
+    fumigation: '',
+    packing: '',
+  })
 
   const [history, setHistory] = useState<CostingRecord[]>([])
   const [historyError, setHistoryError] = useState('')
@@ -273,6 +315,40 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
       setValues((current) => ({ ...current, [key]: accepted })),
     )
   }
+
+  function handleContainerRateChange(
+    key: 'seaFreight' | 'transport' | 'fumigation' | 'packing',
+    text: string,
+  ) {
+    acceptNumber(text, (accepted) => {
+      setContainerRates((current) => ({ ...current, [key]: accepted }))
+
+      const tonnage = parseFloat(tonnagePerBox) || 0
+      const perTonne = tonnage > 0 && accepted !== '' ? (Number(accepted) / tonnage).toFixed(2) : ''
+      setField(key, perTonne)
+    })
+  }
+
+  function isContainerDrivenRow(rowKey: 'seaFreight' | 'transport' | 'fumigation' | 'packing'): boolean {
+    return ['seaFreight', 'transport', 'fumigation', 'packing'].includes(rowKey)
+  }
+
+  useEffect(() => {
+    const tonnage = parseFloat(tonnagePerBox) || 0
+    if (tonnage <= 0) {
+      return
+    }
+
+    ;(['seaFreight', 'transport', 'fumigation', 'packing'] as const).forEach((key) => {
+      const containerRate = Number(containerRates[key]) || 0
+      if (containerRate > 0) {
+        setValues((current) => ({
+          ...current,
+          [key]: (containerRate / tonnage).toFixed(2),
+        }))
+      }
+    })
+  }, [tonnagePerBox, containerRates.seaFreight, containerRates.transport, containerRates.fumigation, containerRates.packing])
 
   function changeCountry(name: string) {
     setCountryName(name)
@@ -555,6 +631,18 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
               </div>
             </div>
           )}
+
+          <label className="tonnage-field">
+            <span>Tonnage per box</span>
+            <input
+              className="yellow-input tonnage-input"
+              type="text"
+              inputMode="decimal"
+              value={tonnagePerBox}
+              onChange={(event) => acceptNumber(event.target.value, setTonnagePerBox)}
+              placeholder="0.00"
+            />
+          </label>
         </div>
 
         <p className="muted small">
@@ -565,17 +653,19 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
         <div className="table-scroll">
           <table className="costing-table">
             <colgroup>
-              <col style={{ width: '42%' }} />
+              <col style={{ width: '34%' }} />
+              <col style={{ width: '18%' }} />
               {currencies.map((c) => (
                 <col
                   key={c}
-                  style={{ width: `${Math.round(58 / currencies.length)}%` }}
+                  style={{ width: `${Math.round(48 / currencies.length)}%` }}
                 />
               ))}
             </colgroup>
             <thead>
               <tr>
                 <th scope="col">Per tonne</th>
+                <th scope="col" className="container-rate-header">Container Rate</th>
                 {currencies.map((currency) => (
                   <th key={currency} scope="col">
                     {CURRENCY_LABELS[currency]}
@@ -611,11 +701,19 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
                 amountAud={result?.seaFreightAud ?? 0}
                 currencies={currencies}
                 rates={rates}
-                entry={{
-                  currency: 'AUD',
-                  value: values.seaFreight,
-                  onChange: (text) => setField('seaFreight', text),
+                containerEntry={{
+                  value: containerRates.seaFreight,
+                  onChange: (text) => handleContainerRateChange('seaFreight', text),
                 }}
+                entry={
+                  isContainerDrivenRow('seaFreight')
+                    ? undefined
+                    : {
+                        currency: 'AUD',
+                        value: values.seaFreight,
+                        onChange: (text) => setField('seaFreight', text),
+                      }
+                }
               />
               <MoneyRow
                 label="Less: Transport"
@@ -623,33 +721,57 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
                 amountAud={result?.transportAud ?? 0}
                 currencies={currencies}
                 rates={rates}
-                entry={{
-                  currency: 'AUD',
-                  value: values.transport,
-                  onChange: (text) => setField('transport', text),
+                containerEntry={{
+                  value: containerRates.transport,
+                  onChange: (text) => handleContainerRateChange('transport', text),
                 }}
+                entry={
+                  isContainerDrivenRow('transport')
+                    ? undefined
+                    : {
+                        currency: 'AUD',
+                        value: values.transport,
+                        onChange: (text) => setField('transport', text),
+                      }
+                }
               />
               <MoneyRow
                 label="Less: Fumigation"
                 amountAud={result?.fumigationAud ?? 0}
                 currencies={currencies}
                 rates={rates}
-                entry={{
-                  currency: 'AUD',
-                  value: values.fumigation,
-                  onChange: (text) => setField('fumigation', text),
+                containerEntry={{
+                  value: containerRates.fumigation,
+                  onChange: (text) => handleContainerRateChange('fumigation', text),
                 }}
+                entry={
+                  isContainerDrivenRow('fumigation')
+                    ? undefined
+                    : {
+                        currency: 'AUD',
+                        value: values.fumigation,
+                        onChange: (text) => setField('fumigation', text),
+                      }
+                }
               />
               <MoneyRow
                 label="Less: Packing"
                 amountAud={result?.packingAud ?? 0}
                 currencies={currencies}
                 rates={rates}
-                entry={{
-                  currency: 'AUD',
-                  value: values.packing,
-                  onChange: (text) => setField('packing', text),
+                containerEntry={{
+                  value: containerRates.packing,
+                  onChange: (text) => handleContainerRateChange('packing', text),
                 }}
+                entry={
+                  isContainerDrivenRow('packing')
+                    ? undefined
+                    : {
+                        currency: 'AUD',
+                        value: values.packing,
+                        onChange: (text) => setField('packing', text),
+                      }
+                }
               />
               <MoneyRow
                 label="Total costs"
