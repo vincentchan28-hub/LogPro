@@ -4,7 +4,7 @@
 
 **Project Name:** Log Procurement
 
-**Main Language / Stack:** Typescript + React
+**Main Language / Stack:** TypeScript + React
 
 **Important Files Right Now:**  
 [Optional – list the main files you are currently working on, one per line. Leave blank if not needed]
@@ -53,11 +53,14 @@ At the end of every response that includes code changes, always include this sho
 **How to test:**  
 [Very simple steps telling me exactly what to do and what I should see]
 
-### 5. New Conversation / New Thread Rules
+### 5. Keeping Files Up to Date
 - At the very beginning of every new conversation, your first action must be to:
   1. Remind me to make sure I have provided the **latest versions** of all relevant files.
   2. Read this Instructions.md file carefully.
   3. Scan all the files I have given you so you understand the current state of the project before suggesting any changes.
+
+- During the conversation: If too many changes have been made to the files since the last update, stop and request that I update the latest versions.  
+  Clearly tell me **which specific files** I should paste or upload again, or simply ask me to upload everything.
 
 ### 6. Extra Rules
 - If I need to run any command (terminal, npm, etc.), explain **exactly** how to open the terminal and what to type, one step at a time.

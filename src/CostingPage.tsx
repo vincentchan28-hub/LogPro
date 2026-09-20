@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import './costing.css'
+import RateTrendChart from './RateTrendChart'
 import {
   COUNTRIES,
   CURRENCY_LABELS,
@@ -554,6 +555,9 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
           </button>
         </div>
 
+        <div className="rates-layout">
+        <div className="rates-left">
+
         {ratesLoading && !live && <p className="muted">Getting the latest rates…</p>}
 
         {liveRates && live && (
@@ -635,6 +639,12 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
           Rates are published once each business day. They are a guide, not a
           bank&apos;s exact rate.
         </p>
+
+        </div>
+        <div className="rates-right">
+          <RateTrendChart />
+        </div>
+        </div>
       </div>
 
       <div className="costing-card">

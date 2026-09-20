@@ -175,6 +175,72 @@
   outline: 3px solid rgba(245, 158, 11, 0.35);
 }
 
+/* Exchange rate panel: rates on the left, trend chart on the right */
+.rates-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.rate-trend {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--infill-subtle);
+}
+
+.rate-trend-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin-bottom: 12px;
+}
+
+.rate-trend-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.rate-trend-stat {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.rate-trend-stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.rate-trend-stat strong {
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-trend-reading {
+  min-height: 1.3em;
+  margin: 8px 0 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.rate-trend-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 1000px) {
+  .rates-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Currency switch for the selling price */
 .segmented-wrap {
   display: flex;
