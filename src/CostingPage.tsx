@@ -47,6 +47,27 @@ const placeholderRates: Rates = { AUD: 1, USD: 1, CNY: 1, JPY: 1, KRW: 1 }
 const restartMessage =
   'LogPro needs to be restarted to use this. Close the app, press Ctrl+C in the VS Code terminal, then run: npm run dev'
 
+// The name the browser uses to remember your default tonnage per box.
+const defaultTonnageKey = 'logpro.defaultTonnagePerBox'
+
+// Reads the saved default. Gives back empty text if nothing was saved yet.
+function readDefaultTonnage(): string {
+  try {
+    return window.localStorage.getItem(defaultTonnageKey) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+// Saves the default so it is still there next time.
+function saveDefaultTonnage(text: string) {
+  try {
+    window.localStorage.setItem(defaultTonnageKey, text)
+  } catch {
+    // If the browser blocks saving, carry on without it.
+  }
+}
+
 function failedRates(message: string): RatesResult {
   return {
     ok: false,
@@ -212,7 +233,8 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   const [useOwnRates, setUseOwnRates] = useState(false)
   const [ownAudPerUsd, setOwnAudPerUsd] = useState('')
   const [ownLocalPerUsd, setOwnLocalPerUsd] = useState('')
-  const [tonnagePerBox, setTonnagePerBox] = useState('')
+  const [tonnagePerBox, setTonnagePerBox] = useState(() => readDefaultTonnage())
+  const [defaultTonnage, setDefaultTonnage] = useState(() => readDefaultTonnage())
   const [containerRates, setContainerRates] = useState<Record<'seaFreight' | 'transport' | 'fumigation' | 'packing', string>>({
     seaFreight: '',
     transport: '',
@@ -349,6 +371,15 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
       }
     })
   }, [tonnagePerBox, containerRates.seaFreight, containerRates.transport, containerRates.fumigation, containerRates.packing])
+
+  function handleSetDefaultTonnage() {
+    if (parseAmount(tonnagePerBox) <= 0) {
+      return
+    }
+
+    saveDefaultTonnage(tonnagePerBox)
+    setDefaultTonnage(tonnagePerBox)
+  }
 
   function changeCountry(name: string) {
     setCountryName(name)
@@ -642,6 +673,20 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
               onChange={(event) => acceptNumber(event.target.value, setTonnagePerBox)}
               placeholder="0.00"
             />
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleSetDefaultTonnage}
+              disabled={
+                parseAmount(tonnagePerBox) <= 0 || tonnagePerBox === defaultTonnage
+              }
+              title="Remember this tonnage and fill it in every time you open Costing"
+              style={{ padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+            >
+              {tonnagePerBox !== '' && tonnagePerBox === defaultTonnage
+                ? '✓ Default saved'
+                : 'Set as default'}
+            </button>
           </label>
         </div>
 
