@@ -183,6 +183,9 @@ button {
 }
 
 .top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -288,6 +291,9 @@ button {
 
 /* Main Navigation Strip with Light Color Infill */
 .main-navigation {
+  position: sticky;
+  top: 66px;
+  z-index: 99;
   display: flex;
   align-items: center;
   padding: 8px 32px;

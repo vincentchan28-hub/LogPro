@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import {
   FileSpreadsheet,
-  Users,
   Scale,
   TrendingUp,
   ArrowRight,
@@ -76,7 +75,7 @@ export function HomeOverview({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           gap: '16px',
           marginBottom: '32px',
         }}
@@ -157,89 +156,10 @@ export function HomeOverview({
           </div>
         </div>
 
-        <div
-          style={{
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.05)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--muted)' }}>
-              Registered Suppliers
-            </span>
-            <Users size={20} color="#8b5cf6" />
-          </div>
-          <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text)' }}>
-            {suppliers.length}
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '6px' }}>
-            Active timber partners in workbook
-          </div>
-        </div>
+
       </div>
 
-      {/* Navigation cards grid */}
-      <h3 style={{ fontSize: '1.25rem', marginBottom: '14px', color: 'var(--text)' }}>
-        Application Modules
-      </h3>
-      <div className="navigation-grid" style={{ marginTop: 0, marginBottom: '36px' }}>
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('procurements')}
-        >
-          <strong>Procurements & Grades</strong>
-          <span>Manage timber purchase agreements, plantation details & grades table</span>
-        </button>
 
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('suppliers')}
-        >
-          <strong>Suppliers & Contacts</strong>
-          <span>Maintain supplier master data, ABN, contacts and payment terms</span>
-        </button>
-
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('priceHistory')}
-        >
-          <strong>Price History</strong>
-          <span>Audit price changes and grade adjustment logs</span>
-        </button>
-
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('costing')}
-        >
-          <strong>Costing & Valuation</strong>
-          <span>Calculate freight, fumigation and export profitability</span>
-        </button>
-
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('resales')}
-        >
-          <strong>Resales & Customers</strong>
-          <span>Log downstream customer deals, buying/selling margins</span>
-        </button>
-
-        <button
-          type="button"
-          className="nav-card"
-          onClick={() => onNavigate('reports')}
-        >
-          <strong>Reports & Export</strong>
-          <span>Summary metrics and Excel exports</span>
-        </button>
-      </div>
 
       {/* Recent Procurements Table Preview */}
       <div
@@ -293,20 +213,42 @@ export function HomeOverview({
             No procurements entered yet. Click "Procurements & Grades" above to create your first agreement.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table
+              style={{
+                width: '100%',
+                minWidth: '1100px',
+                tableLayout: 'auto',
+                borderCollapse: 'separate',
+                borderSpacing: '0',
+              }}
+            >
               <thead>
                 <tr>
-                  <th>Ref</th>
-                  <th>Supplier</th>
-                  <th>Agreement</th>
-                  <th>Plantation</th>
-                  <th>Species</th>
-                  <th>Status</th>
-                  <th>Action</th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '110px' }}>
+                    Ref
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '180px' }}>
+                    Supplier
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '220px' }}>
+                    Agreement
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '160px' }}>
+                    Plantation
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '130px' }}>
+                    Species
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '120px' }}>
+                    Status
+                  </th>
+                  <th style={{ textAlign: 'left', whiteSpace: 'nowrap', minWidth: '90px' }}>
+                    Action
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody style={{ whiteSpace: 'nowrap' }}>
                 {procurements.slice(0, 5).map((p) => {
                   const sName =
                     suppliers.find(

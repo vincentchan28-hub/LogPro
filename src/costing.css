@@ -137,7 +137,7 @@
   color: #422006;
   font: inherit;
   font-weight: 700;
-  text-align: right;
+  text-align: center;
 }
 
 .yellow-input:focus {
@@ -208,6 +208,11 @@
 .costing-table thead th:first-child,
 .costing-table tbody th {
   text-align: left;
+}
+
+.costing-table thead th:not(:first-child),
+.costing-table tbody td {
+  text-align: center;
 }
 
 .costing-table tbody th {

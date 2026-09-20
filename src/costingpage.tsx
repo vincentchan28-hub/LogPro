@@ -125,6 +125,21 @@ function MoneyRow({
                 placeholder="0.00"
                 value={entry.value}
                 onChange={(event) => entry.onChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    const inputs = Array.from(
+                      document.querySelectorAll<HTMLInputElement>(
+                        '.costing-table .yellow-input',
+                      ),
+                    )
+                    const currentIndex = inputs.indexOf(event.currentTarget)
+
+                    if (currentIndex >= 0) {
+                      inputs[currentIndex + 1]?.focus()
+                    }
+                  }
+                }}
                 aria-label={`${label} in ${CURRENCY_LABELS[currency]}`}
               />
             </td>
