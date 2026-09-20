@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type FormEvent } from 'react'
+import { useState, useEffect, useMemo, useCallback, type FormEvent } from 'react'
 import {
   Calculator,
   RefreshCw,
@@ -146,13 +146,7 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
   const [gradeOrSpecies, setGradeOrSpecies] = useState('Radiata Pine - A Grade')
   const [costingNotes, setCostingNotes] = useState('')
 
-  // Load Exchange Rates on mount
-  useEffect(() => {
-    loadExchangeRates(false)
-    loadWorkbookCostings()
-  }, [workbookPath])
-
-  async function loadExchangeRates(force: boolean) {
+  const loadExchangeRates = useCallback(async (force: boolean) => {
     setIsLoadingRates(true)
     try {
       const data = await fetchLiveExchangeRates(force)
@@ -168,9 +162,9 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
     } finally {
       setIsLoadingRates(false)
     }
-  }
+  }, [])
 
-  function loadWorkbookCostings() {
+  const loadWorkbookCostings = useCallback(() => {
     if (!workbookPath || typeof window.logPro?.getCostings !== 'function') return
     try {
       const list = window.logPro.getCostings(workbookPath)
@@ -178,7 +172,13 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
     } catch (err) {
       console.warn('Error reading saved costings:', err)
     }
-  }
+  }, [workbookPath])
+
+  // Load Exchange Rates on mount
+  useEffect(() => {
+    loadExchangeRates(false)
+    loadWorkbookCostings()
+  }, [loadExchangeRates, loadWorkbookCostings])
 
   // Active Effective Exchange Rates
   const audUsdRate = Number(customAudUsd) || exchangeData?.rates.USD || 0.655
@@ -309,7 +309,6 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
     includeCommission,
     audUsdRate,
     audCnyRate,
-    usdCnyRate,
   ])
 
   // Save Costing to Workbook

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import './Costing.css'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import './costing.css'
 import {
   COUNTRIES,
   CURRENCY_LABELS,
@@ -230,12 +230,7 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
     )
   }, [rates, local, sellingCurrency, values])
 
-  useEffect(() => {
-    void loadRates()
-    void loadHistory()
-  }, [workbookPath])
-
-  async function loadRates() {
+  const loadRates = useCallback(async () => {
     if (typeof window.logPro?.getRates !== 'function') {
       setLive(failedRates(restartMessage))
       setRatesLoading(false)
@@ -251,9 +246,9 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
     } finally {
       setRatesLoading(false)
     }
-  }
+  }, [])
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async () => {
     if (typeof window.logPro?.listCostings !== 'function') {
       setHistoryError(restartMessage)
       return
@@ -266,7 +261,12 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
     } catch {
       setHistoryError('LogPro could not load the saved costings.')
     }
-  }
+  }, [workbookPath])
+
+  useEffect(() => {
+    void loadRates()
+    void loadHistory()
+  }, [loadRates, loadHistory])
 
   function setField(key: FieldKey, text: string) {
     acceptNumber(text, (accepted) =>
@@ -564,6 +564,15 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
 
         <div className="table-scroll">
           <table className="costing-table">
+            <colgroup>
+              <col style={{ width: '42%' }} />
+              {currencies.map((c) => (
+                <col
+                  key={c}
+                  style={{ width: `${Math.round(58 / currencies.length)}%` }}
+                />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">Per tonne</th>

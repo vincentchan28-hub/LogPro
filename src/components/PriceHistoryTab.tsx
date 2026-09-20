@@ -375,7 +375,12 @@ export function PriceHistoryTab({
     <div
       id="price-history-page"
       className="page-content"
-      style={{ maxWidth: '1440px', margin: '0 auto', padding: '24px 20px' }}
+      style={{
+        width: '100%',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        margin: '0 auto',
+      }}
     >
       {/* Top Banner & Action Buttons */}
       <div
@@ -891,6 +896,9 @@ export function PriceHistoryTab({
       {/* Main Audit Data Table */}
       <div
         style={{
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           backgroundColor: '#ffffff',
           border: '1px solid var(--border)',
           borderRadius: '12px',
@@ -898,10 +906,11 @@ export function PriceHistoryTab({
           boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
         }}
       >
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ width: '100%', maxWidth: '100%', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table
             style={{
               width: '100%',
+              minWidth: '980px',
               borderCollapse: 'collapse',
               textAlign: 'left',
               fontSize: '0.86rem',

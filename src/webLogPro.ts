@@ -11,6 +11,12 @@ import {
   type WorkbookResult,
   STANDARD_GRADES,
 } from './types'
+import type {
+  CostingListResult,
+  RatesResult,
+  Rates,
+  CostingRecord as PageCostingRecord,
+} from './costing'
 
 export type SupplierInput = {
   name: string
@@ -1371,12 +1377,59 @@ export const webLogPro = {
 
   async saveCosting(
     workbookPath: string,
-    costing: Partial<CostingRecord>,
-  ): Promise<{ costings: CostingRecord[]; error: string }> {
+    costing: any,
+  ): Promise<any> {
     const workbook = getWorkbook(workbookPath)
     if (!workbook) return { costings: [], error: 'No workbook is open.' }
 
     try {
+      // Check if it's the new CostingInput (from CostingPage)
+      if (costing && ('AudPerUsd' in costing || 'LocalCurrency' in costing)) {
+        const raw = getRows<Record<string, any>>(workbook, 'Costings')
+        const usedNumbers = raw
+          .map((row) => String(row.CostingReference || row.CostingRef || ''))
+          .filter((ref) => ref.startsWith('COST-'))
+          .map((ref) => Number(ref.slice(5)))
+          .filter((n) => Number.isInteger(n) && n > 0)
+        const nextNum = usedNumbers.length === 0 ? 1 : Math.max(...usedNumbers) + 1
+        const costingRef = `COST-${String(nextNum).padStart(4, '0')}`
+        const now = new Date().toISOString()
+
+        const newRow: Record<string, any> = {
+          CostingReference: costingRef,
+          CreatedAt: now,
+          Label: (costing.Label || '').slice(0, 200),
+          DestinationCountry: costing.DestinationCountry || 'China',
+          LocalCurrency: costing.LocalCurrency || 'USD',
+          SellingPriceUSD: Number(costing.SellingPriceUSD) || 0,
+          SellingPriceLocal: Number(costing.SellingPriceLocal) || 0,
+          SellingPriceAUD: Number(costing.SellingPriceAUD) || 0,
+          ClearanceAUD: Number(costing.ClearanceAUD) || 0,
+          SeaFreightAUD: Number(costing.SeaFreightAUD) || 0,
+          TransportAUD: Number(costing.TransportAUD) || 0,
+          FumigationAUD: Number(costing.FumigationAUD) || 0,
+          PackingAUD: Number(costing.PackingAUD) || 0,
+          TotalCostsAUD: Number(costing.TotalCostsAUD) || 0,
+          MaxAffordableOfferAUD: Number(costing.MaxAffordableOfferAUD) || 0,
+          MaxAffordableOfferUSD: Number(costing.MaxAffordableOfferUSD) || 0,
+          TraderCommissionAUD: Number(costing.TraderCommissionAUD) || 0,
+          RecommendedOfferAUD: Number(costing.RecommendedOfferAUD) || 0,
+          RecommendedOfferUSD: Number(costing.RecommendedOfferUSD) || 0,
+          AudPerUsd: Number(costing.AudPerUsd) || 0,
+          LocalPerUsd: Number(costing.LocalPerUsd) || 0,
+          RateSource: String(costing.RateSource || ''),
+          RateDate: String(costing.RateDate || ''),
+        }
+
+        raw.push(newRow)
+        const allHeaders = Array.from(new Set([...HEADERS.Costings, ...Object.keys(newRow)]))
+        setRows(workbook, 'Costings', allHeaders, raw as any)
+        saveWorkbookToStorage(workbookPath, workbook)
+
+        return await webLogPro.listCostings(workbookPath)
+      }
+
+      // Otherwise legacy CostingRecord (CostingTab)
       const costings = readCostings(workbook)
       const now = formatTimestamp()
 
@@ -1454,6 +1507,89 @@ export const webLogPro = {
       return { costings, error: '' }
     } catch (e: any) {
       return { costings: [], error: e?.message || String(e) }
+    }
+  },
+
+  async getRates(): Promise<RatesResult> {
+    try {
+      const url = 'https://api.frankfurter.dev/v1/latest?base=AUD&symbols=USD,CNY,JPY,KRW'
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        const perAud: Rates = {
+          AUD: 1,
+          USD: Number(data?.rates?.USD) || 0.655,
+          CNY: Number(data?.rates?.CNY) || 4.72,
+          JPY: Number(data?.rates?.JPY) || 98.5,
+          KRW: Number(data?.rates?.KRW) || 890,
+        }
+        return {
+          ok: true,
+          error: '',
+          sourceName: 'European Central Bank (ECB) reference rates, via frankfurter.dev',
+          sourceUrl: url,
+          rateDate: String(data?.date || new Date().toISOString().slice(0, 10)),
+          perAud,
+          problems: [],
+        }
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    return {
+      ok: true,
+      error: '',
+      sourceName: 'Indicative Daily Reference Rates (RBA / Market Rates)',
+      sourceUrl: 'https://www.rba.gov.au',
+      rateDate: new Date().toISOString().slice(0, 10),
+      perAud: {
+        AUD: 1,
+        USD: 0.655,
+        CNY: 4.72,
+        JPY: 98.5,
+        KRW: 890,
+      },
+      problems: [],
+    }
+  },
+
+  async listCostings(workbookPath: string): Promise<CostingListResult> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { costings: [], error: 'No workbook is open.' }
+    try {
+      const raw = getRows<Record<string, any>>(workbook, 'Costings')
+      const costings: PageCostingRecord[] = raw
+        .map((row, idx): PageCostingRecord => ({
+          CostingReference: String(row.CostingReference || row.CostingRef || `COST-${String(idx + 1).padStart(4, '0')}`),
+          CreatedAt: String(row.CreatedAt || row.CreatedDate || new Date().toISOString()),
+          Label: String(row.Label || row.Notes || row.GradeOrSpecies || ''),
+          DestinationCountry: String(row.DestinationCountry || 'China'),
+          LocalCurrency: String(row.LocalCurrency || (row.DestinationCountry === 'China' ? 'RMB' : 'USD')),
+          SellingPriceUSD: Number(row.SellingPriceUSD) || 0,
+          SellingPriceLocal: Number(row.SellingPriceLocal || row.SellingPriceRMB) || 0,
+          SellingPriceAUD: Number(row.SellingPriceAUD) || 0,
+          ClearanceAUD: Number(row.ClearanceAUD || row.CustomsClearanceAUD) || 0,
+          SeaFreightAUD: Number(row.SeaFreightAUD) || 0,
+          TransportAUD: Number(row.TransportAUD) || 0,
+          FumigationAUD: Number(row.FumigationAUD) || 0,
+          PackingAUD: Number(row.PackingAUD) || 0,
+          TotalCostsAUD: Number(row.TotalCostsAUD || row.TotalDeductionsAUD) || 0,
+          MaxAffordableOfferAUD: Number(row.MaxAffordableOfferAUD || row.MillDoorPriceAUD) || 0,
+          MaxAffordableOfferUSD: Number(row.MaxAffordableOfferUSD || row.MillDoorPriceUSD) || 0,
+          TraderCommissionAUD: Number(row.TraderCommissionAUD) || 0,
+          RecommendedOfferAUD: Number(row.RecommendedOfferAUD || row.MillDoorPriceAUD) || 0,
+          RecommendedOfferUSD: Number(row.RecommendedOfferUSD || row.MillDoorPriceUSD) || 0,
+          AudPerUsd: Number(row.AudPerUsd) || (row.ExchangeRateAUD_USD ? 1 / Number(row.ExchangeRateAUD_USD) : 1.52),
+          LocalPerUsd: Number(row.LocalPerUsd) || 7.2,
+          RateSource: String(row.RateSource || 'Indicative reference rates'),
+          RateDate: String(row.RateDate || ''),
+        }))
+        .reverse()
+
+      return { costings, error: '' }
+    } catch (err: any) {
+      return { costings: [], error: err?.message || String(err) }
     }
   },
 }

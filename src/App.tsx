@@ -12,7 +12,6 @@ import {
 import { ProcurementsTab } from './components/ProcurementsTab'
 import { HomeOverview } from './components/HomeOverview'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
-import { CostingTab } from './components/CostingTab'
 import { Download, Building, Plus, Trees } from 'lucide-react'
 import './App.css'
 
@@ -338,13 +337,10 @@ function App() {
       return renderSuppliersPage()
     }
 
-    // The Costing page is shown by the CostingTab block below.
-
     if (currentPage === 'costing') {
       return (
-        <CostingTab
+        <CostingPage
           workbookPath={selectedWorkbook}
-          onRefresh={refreshWorkbookData}
         />
       )
     }
@@ -384,66 +380,68 @@ function App() {
   if (selectedWorkbook) {
     return (
       <main className="home-page">
-        <header className="top-bar">
-          <div className="brand-group">
-            <div className="brand-logo-badge">
-              <Trees size={20} />
-            </div>
-            <div>
-              <div className="brand-title-wrap">
-                <h1>LogPro</h1>
-                <span className="brand-version-pill">Enterprise v2.4</span>
+        <div className="sticky-header-container">
+          <header className="top-bar">
+            <div className="brand-group">
+              <div className="brand-logo-badge">
+                <Trees size={20} />
               </div>
-              <p>Timber & Log Procurement Management System</p>
+              <div>
+                <div className="brand-title-wrap">
+                  <h1>LogPro</h1>
+                  <span className="brand-version-pill">Enterprise v2.4</span>
+                </div>
+                <p>Timber & Log Procurement Management System</p>
+              </div>
             </div>
-          </div>
 
-          <div className="top-bar-actions">
-            <button
-              type="button"
-              className="export-workbook-button"
-              onClick={() => window.logPro.exportWorkbookFile(selectedWorkbook)}
-              title="Download the updated Excel workbook with all sheets & costings"
-            >
-              <Download size={15} /> Export .xlsx
-            </button>
-            <button
-              type="button"
-              className="close-workbook-button"
-              onClick={handleCloseWorkbook}
-            >
-              Switch Workbook
-            </button>
-          </div>
-        </header>
-
-        <nav className="main-navigation">
-          <div className="nav-container">
-            {pageList.map((page) => (
+            <div className="top-bar-actions">
               <button
-                key={page.id}
                 type="button"
-                className={`nav-button ${currentPage === page.id ? 'nav-active' : ''}`}
-                onClick={() => setCurrentPage(page.id)}
+                className="export-workbook-button"
+                onClick={() => window.logPro.exportWorkbookFile(selectedWorkbook)}
+                title="Download the updated Excel workbook with all sheets & costings"
               >
-                {page.label}
+                <Download size={15} /> Export .xlsx
               </button>
-            ))}
-          </div>
-        </nav>
+              <button
+                type="button"
+                className="close-workbook-button"
+                onClick={handleCloseWorkbook}
+              >
+                Switch Workbook
+              </button>
+            </div>
+          </header>
 
-        <section className="workbook-banner">
-          <div className="banner-left">
-            <span className="banner-label">Active Database:</span>
-            <span className="banner-filename">{selectedWorkbook}</span>
-            <span className="banner-badge">XLSX Engine</span>
-          </div>
-          <div className="banner-right">
-            <span>Browser Auto-Persist Active</span>
-            <span className="banner-dot">•</span>
-            <span>All 11 Core Sheets Verified</span>
-          </div>
-        </section>
+          <nav className="main-navigation">
+            <div className="nav-container">
+              {pageList.map((page) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  className={`nav-button ${currentPage === page.id ? 'nav-active' : ''}`}
+                  onClick={() => setCurrentPage(page.id)}
+                >
+                  {page.label}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          <section className="workbook-banner">
+            <div className="banner-left">
+              <span className="banner-label">Active Database:</span>
+              <span className="banner-filename">{selectedWorkbook}</span>
+              <span className="banner-badge">XLSX Engine</span>
+            </div>
+            <div className="banner-right">
+              <span>Browser Auto-Persist Active</span>
+              <span className="banner-dot">•</span>
+              <span>All 11 Core Sheets Verified</span>
+            </div>
+          </section>
+        </div>
 
         {renderPage()}
 
