@@ -269,17 +269,31 @@
   color: var(--danger-text);
 }
 
+.history-table {
+  table-layout: auto;
+  min-width: 1100px;
+  width: max-content;
+}
+
 .history-table th,
 .history-table td {
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
   font-size: 0.88rem;
 }
 
+.history-table td:nth-child(2),
 .history-table td:nth-child(3),
 .history-table td:nth-child(4),
-.history-table td:nth-child(2),
 .history-table td:last-child {
   text-align: left;
+}
+
+.history-table th:nth-child(3),
+.history-table td:nth-child(3) {
+  max-width: 220px;
 }
 
 /* Messages */

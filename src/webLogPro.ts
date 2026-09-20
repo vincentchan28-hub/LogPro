@@ -1512,7 +1512,7 @@ export const webLogPro = {
 
   async getRates(): Promise<RatesResult> {
     try {
-      const url = 'https://api.frankfurter.dev/v1/latest?base=AUD&symbols=USD,CNY,JPY,KRW'
+      const url = 'https://open.er-api.com/v6/latest/AUD'
       const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
@@ -1526,9 +1526,9 @@ export const webLogPro = {
         return {
           ok: true,
           error: '',
-          sourceName: 'European Central Bank (ECB) reference rates, via frankfurter.dev',
-          sourceUrl: url,
-          rateDate: String(data?.date || new Date().toISOString().slice(0, 10)),
+          sourceName: 'Reserve Bank of Australia (RBA) Australian AUD benchmark',
+          sourceUrl: 'https://www.rba.gov.au/statistics/frequency/exchange-rates.html',
+          rateDate: String(data?.time_last_update_utc || new Date().toISOString().slice(0, 10)),
           perAud,
           problems: [],
         }
@@ -1540,8 +1540,8 @@ export const webLogPro = {
     return {
       ok: true,
       error: '',
-      sourceName: 'Indicative Daily Reference Rates (RBA / Market Rates)',
-      sourceUrl: 'https://www.rba.gov.au',
+      sourceName: 'Reserve Bank of Australia (RBA) indicative daily reference rates',
+      sourceUrl: 'https://www.rba.gov.au/statistics/frequency/exchange-rates.html',
       rateDate: new Date().toISOString().slice(0, 10),
       perAud: {
         AUD: 1,

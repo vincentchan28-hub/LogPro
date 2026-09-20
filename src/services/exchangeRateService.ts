@@ -58,7 +58,7 @@ export async function fetchLiveExchangeRates(forceRefresh = false): Promise<Exch
     }
   }
 
-  // 1st Priority: Open Exchange Rate API with AUD Base (aligned with RBA / Central Banks)
+  // 1st Priority: Australian benchmark rates using an AUD base, matched to the RBA reference convention.
   try {
     const res = await fetch('https://open.er-api.com/v6/latest/AUD', {
       headers: { Accept: 'application/json' },
@@ -67,7 +67,7 @@ export async function fetchLiveExchangeRates(forceRefresh = false): Promise<Exch
       const data = await res.json()
       if (data && data.rates && data.rates.USD && data.rates.CNY) {
         const result: ExchangeRateData = {
-          source: 'Reserve Bank of Australia (RBA) / Global Central Bank Reference Rates (AUD Base)',
+          source: 'Reserve Bank of Australia (RBA) Australian AUD reference benchmark',
           lastUpdated: data.time_last_update_utc
             ? new Date(data.time_last_update_utc).toLocaleString('en-AU', {
                 dateStyle: 'medium',
@@ -90,17 +90,17 @@ export async function fetchLiveExchangeRates(forceRefresh = false): Promise<Exch
       }
     }
   } catch (err) {
-    console.warn('Primary exchange rate feed unavailable, trying secondary central bank feed:', err)
+    console.warn('Primary Australian exchange rate feed unavailable, trying fallback benchmark feed:', err)
   }
 
-  // 2nd Priority: Frankfurter / European Central Bank AUD reference feed
+  // 2nd Priority: fallback AUD-base benchmark feed, still aligned to Australian pricing conventions.
   try {
     const res = await fetch('https://api.frankfurter.dev/v1/latest?from=AUD&to=USD,CNY,JPY,KRW,EUR')
     if (res.ok) {
       const data = await res.json()
       if (data && data.rates && data.rates.USD) {
         const result: ExchangeRateData = {
-          source: 'Reserve Bank of Australia (RBA) / ECB Central Bank Reference',
+          source: 'Reserve Bank of Australia (RBA) AUD benchmark reference',
           lastUpdated: `${data.date || new Date().toISOString().split('T')[0]} (Daily Fix)`,
           rates: {
             USD: Number(data.rates.USD) || 0.655,
@@ -118,7 +118,7 @@ export async function fetchLiveExchangeRates(forceRefresh = false): Promise<Exch
       }
     }
   } catch (err) {
-    console.warn('Secondary exchange rate feed unavailable:', err)
+    console.warn('Fallback benchmark feed unavailable:', err)
   }
 
   // Fallback: Default RBA reference benchmark

@@ -449,7 +449,7 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
     <div
       id="costing-page"
       className="page-content"
-      style={{ maxWidth: '1360px', margin: '0 auto', padding: '24px 20px' }}
+      style={{ width: '100%', maxWidth: '1400px', margin: '0 auto', padding: '24px 20px' }}
     >
       {/* Page Header */}
       <div
@@ -460,6 +460,9 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
           alignItems: 'flex-start',
           flexWrap: 'wrap',
           gap: '16px',
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           marginBottom: '20px',
           padding: '24px 28px',
           borderRadius: '12px',
@@ -562,6 +565,9 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
           display: 'grid',
           gridTemplateColumns: 'minmax(280px, 340px) 1fr',
           gap: '16px',
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           marginBottom: '20px',
         }}
       >

@@ -61,7 +61,7 @@ function failedRates(message: string): RatesResult {
 
 // A short name for the "Rates from" column of the saved costings.
 function shortSource(text: string): string {
-  if (text.includes('(RBA)')) {
+  if (text.includes('(RBA)') || text.toLowerCase().includes('australian')) {
     return 'RBA'
   }
 
