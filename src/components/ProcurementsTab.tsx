@@ -16,6 +16,8 @@ import {
   Calendar,
   Layers,
   FileCheck,
+  Paperclip,
+  Upload,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -33,11 +35,29 @@ import {
 import { GradeSettingsModal } from './GradeSettingsModal'
 import { AddContactModal } from './AddContactModal'
 import { PriceRevisionModal, type DetectedPriceChange } from './PriceRevisionModal'
+import { ProcurementDetailView } from './ProcurementDetailView'
+import {
+  checkSpecFile,
+  fileToSpec,
+  loadSpec,
+  makeSpecId,
+  openSpecInNewWindow,
+  removeSpec,
+  saveSpec,
+} from '../specStorage'
 
 type ProcurementsTabProps = {
   workbookPath: string
   suppliers: Supplier[]
   onDataChanged: () => void
+}
+
+type PanelMode = 'blank' | 'view' | 'edit' | 'new'
+
+type SpecFields = {
+  LogSpecFileID: string
+  LogSpecFileName: string
+  LogSpecFileType: string
 }
 
 type GradeRowState = {
@@ -70,12 +90,15 @@ export function ProcurementsTab({
   const [gradesList, setGradesList] = useState<GradeDefinition[]>([])
   const [allContacts, setAllContacts] = useState<SupplierContact[]>([])
 
+  // Left panel: blank, viewing, editing or adding new
+  const [mode, setMode] = useState<PanelMode>('blank')
+  const [isDirty, setIsDirty] = useState(false)
+
   // Register view state
-  const [showRegister, setShowRegister] = useState(true)
   const [registerSearch, setRegisterSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
 
-  // Selected procurement for editing
+  // Selected procurement
   const [selectedProcRef, setSelectedProcRef] = useState<string | null>(null)
 
   // Modals
@@ -111,6 +134,13 @@ export function ProcurementsTab({
   const [acceptedByPerson, setAcceptedByPerson] = useState('')
   const [acceptanceNotes, setAcceptanceNotes] = useState('')
   const [generalNotes, setGeneralNotes] = useState('')
+
+  // Log Specification (one file per procurement)
+  const [specFileId, setSpecFileId] = useState('')
+  const [specFileName, setSpecFileName] = useState('')
+  const [specFileType, setSpecFileType] = useState('')
+  const [pendingSpecFile, setPendingSpecFile] = useState<File | null>(null)
+  const [specError, setSpecError] = useState('')
 
   // Grade Rows initialized with 1 clean row
   const [gradeRows, setGradeRows] = useState<GradeRowState[]>(() => [
@@ -176,6 +206,33 @@ export function ProcurementsTab({
     )
   }, [allContacts, contactId])
 
+  // The saved procurement that is being viewed or edited
+  const selectedProcurement = useMemo(() => {
+    if (!selectedProcRef) return null
+    return procurements.find((p) => p.ProcurementRef === selectedProcRef) || null
+  }, [procurements, selectedProcRef])
+
+  // Saved grades of the procurement being viewed
+  const viewGrades = useMemo(() => {
+    if (!selectedProcRef) return []
+    return window.logPro.getProcurementGrades(workbookPath, selectedProcRef)
+    // procurements is listed so the grades refresh after a save
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workbookPath, selectedProcRef, procurements])
+
+  // ---------------- Leaving a form safely ----------------
+
+  function confirmLeaveForm(): boolean {
+    if ((mode === 'new' || mode === 'edit') && isDirty) {
+      return window.confirm(
+        'You have unsaved changes. If you continue, they will be lost.\n\nDo you want to leave without saving?',
+      )
+    }
+    return true
+  }
+
+  // ---------------- Grade rows ----------------
+
   function handleAddGradeRow() {
     const defaultProduct = 'Fresh Logs'
     const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
@@ -190,6 +247,7 @@ export function ProcurementsTab({
       DeliveredTonnes: '0',
     }
     setGradeRows((prev) => [...prev, newRow])
+    setIsDirty(true)
   }
 
   function handleRemoveGradeRow(index: number) {
@@ -198,6 +256,7 @@ export function ProcurementsTab({
       return
     }
     setGradeRows((prev) => prev.filter((_, i) => i !== index))
+    setIsDirty(true)
   }
 
   function handleGradeRowChange(
@@ -268,10 +327,85 @@ export function ProcurementsTab({
     }
   }, [gradeRows])
 
-  // Clear form for New Procurement
-  function handleNewProcurement() {
+  // ---------------- Log Specification ----------------
+
+  function handleSpecFileChosen(fileList: FileList | null) {
+    setSpecError('')
+    const file = fileList?.[0]
+    if (!file) return
+
+    const problem = checkSpecFile(file)
+    if (problem) {
+      setSpecError(problem)
+      return
+    }
+
+    setPendingSpecFile(file)
+  }
+
+  function handleRemoveSpec() {
+    setSpecError('')
+    if (pendingSpecFile) {
+      // Only forget the newly chosen file; the saved one stays.
+      setPendingSpecFile(null)
+    } else {
+      setSpecFileId('')
+      setSpecFileName('')
+      setSpecFileType('')
+    }
+    setIsDirty(true)
+  }
+
+  async function handleOpenSpec(specId: string) {
+    if (!specId) return
+    setErrorMsg('')
+    const message = await openSpecInNewWindow(specId)
+    if (message) {
+      setErrorMsg(message)
+    }
+  }
+
+  // Used when saving a NEW procurement (also "Save as New (Duplicate)").
+  async function buildSpecFieldsForNew(): Promise<{ fields: SpecFields; createdId: string }> {
+    if (pendingSpecFile) {
+      const id = makeSpecId()
+      const spec = fileToSpec(pendingSpecFile)
+      await saveSpec(id, spec)
+      return {
+        fields: { LogSpecFileID: id, LogSpecFileName: spec.name, LogSpecFileType: spec.type },
+        createdId: id,
+      }
+    }
+
+    if (specFileId) {
+      // Duplicate: give the copy its own file so removing one never affects the other.
+      const existing = await loadSpec(specFileId)
+      if (existing) {
+        const id = makeSpecId()
+        await saveSpec(id, existing)
+        return {
+          fields: {
+            LogSpecFileID: id,
+            LogSpecFileName: existing.name,
+            LogSpecFileType: existing.type,
+          },
+          createdId: id,
+        }
+      }
+    }
+
+    return {
+      fields: { LogSpecFileID: '', LogSpecFileName: '', LogSpecFileType: '' },
+      createdId: '',
+    }
+  }
+
+  // ---------------- Panel actions ----------------
+
+  // Clears every field on the form
+  function resetFormFields() {
     setSelectedProcRef(null)
-    setSupplierId(suppliers[0]?.SupplierID ? String(suppliers[0].SupplierID) : '')
+    setSupplierId('')
     setContactId('')
     setAgreementType('Coupe')
     setAgreementDetail('')
@@ -288,6 +422,11 @@ export function ProcurementsTab({
     setAcceptedByPerson('')
     setAcceptanceNotes('')
     setGeneralNotes('')
+    setSpecFileId('')
+    setSpecFileName('')
+    setSpecFileType('')
+    setPendingSpecFile(null)
+    setSpecError('')
     setErrorMsg('')
     setSuccessMsg('')
 
@@ -308,11 +447,19 @@ export function ProcurementsTab({
     ])
   }
 
-  // Select procurement from Register
-  function handleSelectProcurement(proc: Procurement) {
+  // "+ Add New Procurement"
+  function handleStartNew() {
+    if (!confirmLeaveForm()) return
+    resetFormFields()
+    setMode('new')
+    setIsDirty(false)
+  }
+
+  // Copies a saved procurement into the form fields
+  function loadProcurementIntoForm(proc: Procurement) {
     setSelectedProcRef(proc.ProcurementRef)
     setErrorMsg('')
-    setSuccessMsg(`Loaded procurement ${proc.ProcurementRef}`)
+    setSuccessMsg('')
 
     setSupplierId(String(proc.SupplierID || ''))
     setContactId(String(proc.ContactID || ''))
@@ -331,6 +478,12 @@ export function ProcurementsTab({
     setAcceptedByPerson(proc.AcceptedByPerson || '')
     setAcceptanceNotes(proc.AcceptanceNotes || '')
     setGeneralNotes(proc.Notes || '')
+
+    setSpecFileId(proc.LogSpecFileID || '')
+    setSpecFileName(proc.LogSpecFileName || '')
+    setSpecFileType(proc.LogSpecFileType || '')
+    setPendingSpecFile(null)
+    setSpecError('')
 
     // Load procurement grades
     const grades = window.logPro.getProcurementGrades(
@@ -367,6 +520,41 @@ export function ProcurementsTab({
         },
       ])
     }
+  }
+
+  // Click on a procurement in the register: show it for viewing
+  function handleSelectProcurement(proc: Procurement) {
+    if (!confirmLeaveForm()) return
+    loadProcurementIntoForm(proc)
+    setMode('view')
+    setIsDirty(false)
+  }
+
+  function handleEditSelected() {
+    setErrorMsg('')
+    setSuccessMsg('')
+    setIsDirty(false)
+    setMode('edit')
+  }
+
+  function handleCloseView() {
+    resetFormFields()
+    setMode('blank')
+    setIsDirty(false)
+  }
+
+  function handleCancelForm() {
+    if (!confirmLeaveForm()) return
+
+    if (mode === 'edit' && selectedProcurement) {
+      // Go back to the saved version
+      loadProcurementIntoForm(selectedProcurement)
+      setMode('view')
+    } else {
+      resetFormFields()
+      setMode('blank')
+    }
+    setIsDirty(false)
   }
 
   // Validate form data matching Python legacy logic
@@ -448,15 +636,20 @@ export function ProcurementsTab({
     return validatedGrades
   }
 
-  // Save new procurement
+  // Save new procurement (also used by "Save as New (Duplicate)")
   async function handleSaveNew(e: FormEvent) {
     e.preventDefault()
     setErrorMsg('')
     setSuccessMsg('')
 
+    let createdSpecId = ''
+
     try {
       const validatedGrades = validateForm()
       setIsSaving(true)
+
+      const spec = await buildSpecFieldsForNew()
+      createdSpecId = spec.createdId
 
       const payload: Partial<Procurement> = {
         SupplierID: supplierId,
@@ -476,6 +669,7 @@ export function ProcurementsTab({
         AcceptedByPerson: acceptedByPerson.trim(),
         AcceptanceNotes: acceptanceNotes.trim(),
         Notes: generalNotes.trim(),
+        ...spec.fields,
       }
 
       const res = await window.logPro.saveProcurement(
@@ -486,15 +680,19 @@ export function ProcurementsTab({
       setIsSaving(false)
 
       if (res.error) {
+        await removeSpec(createdSpecId)
         setErrorMsg(res.error)
       } else {
-        setSuccessMsg(`Procurement ${res.procurement.ProcurementRef} saved successfully!`)
-        setSelectedProcRef(res.procurement.ProcurementRef)
         loadData()
         onDataChanged()
+        loadProcurementIntoForm(res.procurement)
+        setSuccessMsg(`Procurement ${res.procurement.ProcurementRef} saved successfully!`)
+        setMode('view')
+        setIsDirty(false)
       }
     } catch (err: any) {
       setIsSaving(false)
+      await removeSpec(createdSpecId)
       setErrorMsg(err?.message || String(err))
     }
   }
@@ -585,9 +783,37 @@ export function ProcurementsTab({
     setIsSaving(true)
     setErrorMsg('')
 
+    let createdSpecId = ''
+
     try {
+      // Which spec file the procurement has right now (before this save)
+      const previousSpecId =
+        window.logPro
+          .getProcurements(workbookPath)
+          .find((p) => p.ProcurementRef === selectedProcRef)?.LogSpecFileID || ''
+
+      let specFields: SpecFields
+
+      if (pendingSpecFile) {
+        createdSpecId = makeSpecId()
+        const spec = fileToSpec(pendingSpecFile)
+        await saveSpec(createdSpecId, spec)
+        specFields = {
+          LogSpecFileID: createdSpecId,
+          LogSpecFileName: spec.name,
+          LogSpecFileType: spec.type,
+        }
+      } else {
+        specFields = {
+          LogSpecFileID: specFileId,
+          LogSpecFileName: specFileName,
+          LogSpecFileType: specFileType,
+        }
+      }
+
       const fullPayload = {
         ...payload,
+        ...specFields,
         priceChangeReason,
         priceChangeEffectiveDate,
         priceChangeNotes,
@@ -601,16 +827,26 @@ export function ProcurementsTab({
       setIsSaving(false)
 
       if (res.error) {
+        await removeSpec(createdSpecId)
         setErrorMsg(res.error)
       } else {
+        // The old file is no longer needed if it was replaced or removed
+        if (previousSpecId && previousSpecId !== specFields.LogSpecFileID) {
+          await removeSpec(previousSpecId)
+        }
+
+        loadData()
+        onDataChanged()
+        loadProcurementIntoForm(res.procurement)
         setSuccessMsg(
           `Procurement ${selectedProcRef} updated successfully with ${res.grades.length} grade lines.`,
         )
-        loadData()
-        onDataChanged()
+        setMode('view')
+        setIsDirty(false)
       }
     } catch (err: any) {
       setIsSaving(false)
+      await removeSpec(createdSpecId)
       setErrorMsg(err?.message || String(err))
     }
   }
@@ -687,6 +923,15 @@ export function ProcurementsTab({
     return { agreed, delivered, remaining }
   }
 
+  const badgeLabel =
+    mode === 'edit'
+      ? `Editing ${selectedProcRef}`
+      : mode === 'view'
+      ? `Viewing ${selectedProcRef}`
+      : mode === 'new'
+      ? 'New Agreement'
+      : ''
+
   return (
     <div className="page-content" style={{ maxWidth: '1440px', padding: '24px 20px' }}>
       {/* Header bar */}
@@ -706,31 +951,18 @@ export function ProcurementsTab({
             <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text)' }}>
               Procurement Agreement & Grades
             </h2>
-            {selectedProcRef ? (
+            {badgeLabel && (
               <span
                 style={{
                   padding: '4px 12px',
                   borderRadius: '16px',
-                  background: 'var(--primary-soft)',
-                  color: 'var(--primary-dark)',
+                  background: mode === 'new' ? '#f1f5f9' : 'var(--primary-soft)',
+                  color: mode === 'new' ? '#475569' : 'var(--primary-dark)',
                   fontWeight: 700,
                   fontSize: '0.85rem',
                 }}
               >
-                Editing {selectedProcRef}
-              </span>
-            ) : (
-              <span
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '16px',
-                  background: '#f1f5f9',
-                  color: '#475569',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                }}
-              >
-                New Agreement
+                {badgeLabel}
               </span>
             )}
           </div>
@@ -740,22 +972,6 @@ export function ProcurementsTab({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setShowRegister(!showRegister)}
-            style={{
-              width: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '9px 16px',
-            }}
-          >
-            <TableIcon size={16} />
-            {showRegister ? 'Hide Register' : `View Register (${procurements.length})`}
-          </button>
-
           <button
             type="button"
             className="secondary-button"
@@ -770,20 +986,6 @@ export function ProcurementsTab({
             title="Download active Excel workbook to your computer"
           >
             <Download size={16} /> Export Excel
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNewProcurement}
-            style={{
-              width: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '9px 16px',
-            }}
-          >
-            <Plus size={16} /> New Procurement
           </button>
         </div>
       </div>
@@ -818,1177 +1020,1373 @@ export function ProcurementsTab({
         </div>
       )}
 
-      {/* Main split grid: Form vs Register */}
+      {/* Main split grid: left panel vs Register */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: showRegister ? 'minmax(0, 1.45fr) minmax(0, 1fr)' : '1fr',
+          gridTemplateColumns: 'minmax(0, 1.45fr) minmax(0, 1fr)',
           gap: '24px',
           alignItems: 'start',
         }}
       >
-        {/* ==================== LEFT: PROCUREMENT FORM ==================== */}
-        <div
-          style={{
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '24px',
-            boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
-          }}
-        >
-          <form onSubmit={selectedProcRef ? handleUpdateSelected : handleSaveNew}>
-            {/* Section 1: Supplier & Contact */}
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '16px',
-                marginBottom: '18px',
-                background: '#fbfdff',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '14px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Building size={18} color="var(--primary)" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    1. Supplier & Contact
-                  </h3>
-                </div>
-                {supplierId && (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setIsAddContactOpen(true)}
-                    style={{
-                      width: 'auto',
-                      padding: '4px 10px',
-                      fontSize: '0.8rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Plus size={14} /> Add Contact
-                  </button>
-                )}
-              </div>
+        {/* ==================== LEFT PANEL ==================== */}
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '12px',
-                  marginBottom: '14px',
-                }}
-              >
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Supplier *
-                  </label>
-                  <select
-                    value={supplierId}
-                    onChange={(e) => {
-                      const newSuppId = e.target.value
-                      setSupplierId(newSuppId)
-                      if (newSuppId) {
-                        const contacts = allContacts.filter((c) => String(c.SupplierID).trim() === newSuppId.trim())
-                        const primary = contacts.find((c) => c.IsPrimary)
-                        setContactId(String(primary ? primary.ContactID : (contacts[0]?.ContactID || '')))
-                      } else {
-                        setContactId('')
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    required
-                  >
-                    <option value="">-- Select Supplier --</option>
-                    {suppliers.map((s) => {
-                      const idVal = String(s.SupplierID || s.SupplierReference || '')
-                      return (
-                        <option key={idVal} value={idVal}>
-                          {s.SupplierName} {s.SupplierReference ? `(${s.SupplierReference})` : ''}
-                        </option>
-                      )
-                    })}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Contact Person *
-                  </label>
-                  <select
-                    value={contactId}
-                    onChange={(e) => setContactId(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    disabled={!supplierId || supplierContacts.length === 0}
-                  >
-                    <option value="">
-                      {!supplierId
-                        ? '-- Select supplier first --'
-                        : supplierContacts.length === 0
-                        ? '-- No contacts for supplier --'
-                        : '-- Select Contact --'}
-                    </option>
-                    {supplierContacts.map((c) => (
-                      <option key={String(c.ContactID)} value={String(c.ContactID)}>
-                        {c.ContactName} {c.Role ? `(${c.Role})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Readonly info strip */}
-              {currentSupplier && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                    gap: '10px',
-                    padding: '10px 12px',
-                    background: '#f1f5f9',
-                    borderRadius: '6px',
-                    fontSize: '0.82rem',
-                    color: '#334155',
-                  }}
-                >
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block' }}>Address:</span>
-                    <strong>{currentSupplier.Address || '—'}</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block' }}>ABN:</span>
-                    <strong>{currentSupplier.ABN || '—'}</strong>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b', display: 'block' }}>Payment Terms:</span>
-                    <strong>{currentSupplier.PaymentTerms || '—'}</strong>
-                  </div>
-                  {currentContact && (
-                    <>
-                      <div>
-                        <span style={{ color: '#64748b', display: 'block' }}>Role:</span>
-                        <strong>{currentContact.Role || '—'}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#64748b', display: 'block' }}>Phone:</span>
-                        <strong>{currentContact.PhoneNumber || currentContact.MobileNumber || '—'}</strong>
-                      </div>
-                      <div>
-                        <span style={{ color: '#64748b', display: 'block' }}>Email:</span>
-                        <strong>{currentContact.Email || '—'}</strong>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Section 2: Agreement */}
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '16px',
-                marginBottom: '18px',
-                background: '#fbfdff',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <FileCheck size={18} color="var(--primary)" />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                  2. Agreement Details
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 2fr',
-                  gap: '12px',
-                }}
-              >
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Agreement Type *
-                  </label>
-                  <select
-                    value={agreementType}
-                    onChange={(e) => setAgreementType(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    required
-                  >
-                    {AGREEMENT_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    {agreementType} Detail / Code *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={`Enter ${agreementType} identifier (e.g. Coupe 14A, Block East)`}
-                    value={agreementDetail}
-                    onChange={(e) => setAgreementDetail(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 3: Plantation & Harvest */}
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '16px',
-                marginBottom: '18px',
-                background: '#fbfdff',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <Calendar size={18} color="var(--primary)" />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                  3. Plantation & Harvest Period
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: '12px',
-                }}
-              >
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Plantation Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Green Triangle Estate"
-                    value={plantation}
-                    onChange={(e) => setPlantation(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Harvest Period Start *
-                  </label>
-                  <input
-                    type="date"
-                    value={harvestPeriodStart}
-                    onChange={(e) => setHarvestPeriodStart(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Harvest Period End *
-                  </label>
-                  <input
-                    type="date"
-                    value={harvestPeriodEnd}
-                    onChange={(e) => setHarvestPeriodEnd(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Agreement Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Agreement End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Section 4: Grades, Products, Prices & Tonnes (Interactive Table) */}
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '16px',
-                marginBottom: '18px',
-                background: '#ffffff',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  flexWrap: 'wrap',
-                  gap: '8px',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Layers size={18} color="var(--primary)" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    4. Grades, Products, Prices & Tonnes
-                  </h3>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setIsSettingsOpen(true)}
-                    style={{
-                      width: 'auto',
-                      padding: '5px 10px',
-                      fontSize: '0.8rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                    title="Configure custom species and grades"
-                  >
-                    <SettingsIcon size={14} /> Settings
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAddGradeRow}
-                    style={{
-                      width: 'auto',
-                      padding: '5px 12px',
-                      fontSize: '0.8rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Plus size={14} /> Add Grade Row
-                  </button>
-                </div>
-              </div>
-
-              <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>
-                Add one row for each grade/product combination. Standard grades come from the reference PDF;
-                delivered and remaining tonnes calculate dynamically.
-              </p>
-
-              {/* Table */}
-              <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Species</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '110px' }}>Product</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Grade</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '95px' }}>Offered $/t</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed $/t *</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed t *</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Delivered t</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '105px' }}>Remaining t</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'center', width: '45px' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gradeRows.map((row, idx) => {
-                      const agreed = Number(row.AgreedTonnes) || 0
-                      const delivered = Number(row.DeliveredTonnes) || 0
-                      const remaining = Math.max(0, agreed - delivered)
-                      const availableGrades = getGradesFor(row.Species, row.ProductType)
-
-                      return (
-                        <tr key={row.tempId} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '6px 8px' }}>
-                            <select
-                              value={row.Species}
-                              onChange={(e) => handleGradeRowChange(idx, 'Species', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                              }}
-                            >
-                              {speciesList.map((s) => (
-                                <option key={s.SpeciesName} value={s.SpeciesName}>
-                                  {s.SpeciesName}
-                                </option>
-                              ))}
-                              {!speciesList.some((s) => s.SpeciesName === row.Species) && (
-                                <option value={row.Species}>{row.Species}</option>
-                              )}
-                            </select>
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <select
-                              value={row.ProductType}
-                              onChange={(e) =>
-                                handleGradeRowChange(
-                                  idx,
-                                  'ProductType',
-                                  e.target.value as 'Fresh Logs' | 'Burnt Logs',
-                                )
-                              }
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                              }}
-                            >
-                              {PRODUCT_TYPES.map((pt) => (
-                                <option key={pt} value={pt}>
-                                  {pt}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <select
-                              value={row.GradeName}
-                              onChange={(e) => handleGradeRowChange(idx, 'GradeName', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                                fontWeight: 600,
-                              }}
-                            >
-                              {availableGrades.map((g) => (
-                                <option key={g} value={g}>
-                                  {g}
-                                </option>
-                              ))}
-                              {!availableGrades.includes(row.GradeName) && row.GradeName && (
-                                <option value={row.GradeName}>{row.GradeName}</option>
-                              )}
-                            </select>
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder="0.00"
-                              value={row.OfferedPricePerTonne}
-                              onChange={(e) =>
-                                handleGradeRowChange(idx, 'OfferedPricePerTonne', e.target.value)
-                              }
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                              }}
-                            />
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              required
-                              placeholder="0.00"
-                              value={row.AgreedPricePerTonne}
-                              onChange={(e) =>
-                                handleGradeRowChange(idx, 'AgreedPricePerTonne', e.target.value)
-                              }
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                                fontWeight: 600,
-                              }}
-                            />
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              required
-                              placeholder="0"
-                              value={row.AgreedTonnes}
-                              onChange={(e) =>
-                                handleGradeRowChange(idx, 'AgreedTonnes', e.target.value)
-                              }
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                                fontWeight: 600,
-                              }}
-                            />
-                          </td>
-
-                          <td style={{ padding: '6px 8px' }}>
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder="0"
-                              value={row.DeliveredTonnes}
-                              onChange={(e) =>
-                                handleGradeRowChange(idx, 'DeliveredTonnes', e.target.value)
-                              }
-                              style={{
-                                width: '100%',
-                                textAlign: 'right',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '0.85rem',
-                              }}
-                            />
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '6px 12px',
-                              textAlign: 'right',
-                              fontWeight: 700,
-                              color: remaining > 0 ? '#0369a1' : '#16a34a',
-                            }}
-                          >
-                            {remaining.toLocaleString(undefined, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </td>
-
-                          <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveGradeRow(idx)}
-                              style={{
-                                width: 'auto',
-                                padding: '4px',
-                                background: 'transparent',
-                                borderColor: 'transparent',
-                                color: '#94a3b8',
-                                cursor: 'pointer',
-                              }}
-                              title="Delete row"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                      <td colSpan={5} style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        Agreement Totals:
-                      </td>
-                      <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }}>
-                        {totals.totalAgreedTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                      </td>
-                      <td style={{ padding: '10px 8px', textAlign: 'right', color: '#16a34a' }}>
-                        {totals.totalDeliveredTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', color: '#0284c7' }}>
-                        {totals.totalRemainingTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                      </td>
-                      <td></td>
-                    </tr>
-                    <tr style={{ background: '#f0fdf4', borderTop: '1px solid #bbf7d0' }}>
-                      <td colSpan={5} style={{ padding: '8px 12px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>
-                        Estimated Contract Commitment (AUD):
-                      </td>
-                      <td colSpan={4} style={{ padding: '8px 12px', textAlign: 'left', color: '#15803d', fontWeight: 800 }}>
-                        ${totals.estimatedTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AUD
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-
-            {/* Section 5: Status & Acceptance */}
-            <div
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: '10px',
-                padding: '16px',
-                marginBottom: '20px',
-                background: '#fbfdff',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                <UserCheck size={18} color="var(--primary)" />
-                <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                  5. Status & Acceptance
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                  gap: '12px',
-                  marginBottom: '14px',
-                }}
-              >
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Status *
-                  </label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {STATUSES.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Acceptance Date
-                  </label>
-                  <input
-                    type="date"
-                    value={acceptanceDate}
-                    onChange={(e) => setAcceptanceDate(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Acceptance Time
-                  </label>
-                  <input
-                    type="time"
-                    value={acceptanceTime}
-                    onChange={(e) => setAcceptanceTime(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Acceptance Method
-                  </label>
-                  <select
-                    value={acceptanceMethod}
-                    onChange={(e) => setAcceptanceMethod(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  >
-                    {ACCEPTANCE_METHODS.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Accepted By Person
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Signatory name"
-                    value={acceptedByPerson}
-                    onChange={(e) => setAcceptedByPerson(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    Acceptance Notes
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Acceptance conditions or contract reference"
-                    value={acceptanceNotes}
-                    onChange={(e) => setAcceptanceNotes(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                      fontSize: '0.85rem',
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                    General Notes
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Any general comments, delivery notes, or road permits"
-                    value={generalNotes}
-                    onChange={(e) => setGeneralNotes(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                      fontSize: '0.85rem',
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Actions Bar */}
-            <div
-              style={{
-                display: 'flex',
-                gap: '12px',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                paddingTop: '8px',
-                borderTop: '1px solid var(--border)',
-              }}
-            >
-              <button
-                type="submit"
-                disabled={isSaving}
-                style={{
-                  width: 'auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '12px 24px',
-                  fontSize: '0.95rem',
-                }}
-              >
-                <Save size={18} />
-                {isSaving
-                  ? 'Saving...'
-                  : selectedProcRef
-                  ? `Update ${selectedProcRef}`
-                  : 'Save Procurement'}
-              </button>
-
-              {selectedProcRef && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={isSaving}
-                  onClick={handleSaveNew}
-                  style={{
-                    width: 'auto',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '12px 20px',
-                  }}
-                  title="Save current details as a brand new agreement"
-                >
-                  <Plus size={16} /> Save as New (Duplicate)
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleNewProcurement}
-                style={{
-                  width: 'auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '12px 18px',
-                }}
-              >
-                <RotateCcw size={16} /> Reset Form
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* ==================== RIGHT: PROCUREMENT REGISTER ==================== */}
-        {showRegister && (
+        {/* Blank: only the add button */}
+        {mode === 'blank' && (
           <div
             style={{
               background: 'var(--card-bg)',
               border: '1px solid var(--border)',
               borderRadius: '12px',
-              padding: '20px',
+              padding: '24px',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
+              minHeight: '240px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleStartNew}
+              style={{
+                width: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '14px 26px',
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: '#ffffff',
+                background: 'var(--primary)',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+              }}
+            >
+              <Plus size={18} /> Add New Procurement
+            </button>
+          </div>
+        )}
+
+        {/* Viewing a saved procurement (read-only) */}
+        {mode === 'view' && selectedProcurement && (
+          <ProcurementDetailView
+            procurement={selectedProcurement}
+            supplier={currentSupplier}
+            contact={currentContact}
+            grades={viewGrades}
+            onEdit={handleEditSelected}
+            onClose={handleCloseView}
+            onOpenSpec={() => void handleOpenSpec(selectedProcurement.LogSpecFileID || '')}
+          />
+        )}
+
+        {/* Adding or editing: the form */}
+        {(mode === 'new' || mode === 'edit') && (
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '24px',
               boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '14px',
-                flexWrap: 'wrap',
-                gap: '8px',
-              }}
+            <form
+              onSubmit={mode === 'edit' ? handleUpdateSelected : handleSaveNew}
+              onChange={() => setIsDirty(true)}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <TableIcon size={20} color="var(--primary)" />
-                <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>
-                  Procurement Register
-                </h3>
-                <span
-                  style={{
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    background: 'var(--primary-soft)',
-                    color: 'var(--primary-dark)',
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  {filteredProcurements.length}
-                </span>
-              </div>
-            </div>
-
-            {/* Register Search & Filters */}
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Search
-                  size={16}
-                  style={{
-                    position: 'absolute',
-                    left: '10px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: '#94a3b8',
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder="Search Ref, Supplier, Coupe, Plantation..."
-                  value={registerSearch}
-                  onChange={(e) => setRegisterSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 10px 8px 32px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border)',
-                    fontSize: '0.85rem',
-                  }}
-                />
-              </div>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border)',
-                  background: '#fff',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                }}
-              >
-                <option value="All">All Statuses</option>
-                {STATUSES.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Procurements List / Table */}
-            {filteredProcurements.length === 0 ? (
+              {/* Section 1: Supplier & Contact */}
               <div
                 style={{
-                  padding: '36px 16px',
-                  textAlign: 'center',
-                  border: '2px dashed var(--border)',
-                  borderRadius: '8px',
-                  color: 'var(--muted)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                  background: '#fbfdff',
                 }}
               >
-                <p style={{ margin: 0, fontWeight: 600 }}>No procurements match this criteria.</p>
-                <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>
-                  Create an agreement or clear the search filter.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '720px', overflowY: 'auto' }}>
-                {filteredProcurements.map((proc) => {
-                  const isSelected = selectedProcRef === proc.ProcurementRef
-                  const stColor = getStatusColor(proc.Status)
-                  const tonnes = getProcurementTonnes(proc.ProcurementRef)
-                  const percentDelivered =
-                    tonnes.agreed > 0
-                      ? Math.min(100, Math.round((tonnes.delivered / tonnes.agreed) * 100))
-                      : 0
-                  const suppName =
-                    suppliers.find(
-                      (s) =>
-                        String(s.SupplierID) === String(proc.SupplierID) ||
-                        String(s.SupplierReference) === String(proc.SupplierID),
-                    )?.SupplierName || `Supplier #${proc.SupplierID}`
-
-                  return (
-                    <div
-                      key={proc.ProcurementRef}
-                      onClick={() => handleSelectProcurement(proc)}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Building size={18} color="var(--primary)" />
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                      1. Supplier & Contact
+                    </h3>
+                  </div>
+                  {supplierId && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setIsAddContactOpen(true)}
                       style={{
-                        border: isSelected
-                          ? '2px solid var(--primary)'
-                          : '1px solid var(--border)',
-                        background: isSelected ? 'var(--primary-soft)' : '#ffffff',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
+                        width: 'auto',
+                        padding: '4px 10px',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
+                      <Plus size={14} /> Add Contact
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '12px',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Supplier *
+                    </label>
+                    <select
+                      value={supplierId}
+                      onChange={(e) => {
+                        const newSuppId = e.target.value
+                        setSupplierId(newSuppId)
+                        if (newSuppId) {
+                          const contacts = allContacts.filter((c) => String(c.SupplierID).trim() === newSuppId.trim())
+                          const primary = contacts.find((c) => c.IsPrimary)
+                          setContactId(String(primary ? primary.ContactID : (contacts[0]?.ContactID || '')))
+                        } else {
+                          setContactId('')
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      required
+                    >
+                      <option value="">-- Select Supplier --</option>
+                      {suppliers.map((s) => {
+                        const idVal = String(s.SupplierID || s.SupplierReference || '')
+                        return (
+                          <option key={idVal} value={idVal}>
+                            {s.SupplierName} {s.SupplierReference ? `(${s.SupplierReference})` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Contact Person *
+                    </label>
+                    <select
+                      value={contactId}
+                      onChange={(e) => setContactId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      disabled={!supplierId || supplierContacts.length === 0}
+                    >
+                      <option value="">
+                        {!supplierId
+                          ? '-- Select supplier first --'
+                          : supplierContacts.length === 0
+                          ? '-- No contacts for supplier --'
+                          : '-- Select Contact --'}
+                      </option>
+                      {supplierContacts.map((c) => (
+                        <option key={String(c.ContactID)} value={String(c.ContactID)}>
+                          {c.ContactName} {c.Role ? `(${c.Role})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Readonly info strip */}
+                {currentSupplier && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      background: '#f1f5f9',
+                      borderRadius: '6px',
+                      fontSize: '0.82rem',
+                      color: '#334155',
+                    }}
+                  >
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block' }}>Address:</span>
+                      <strong>{currentSupplier.Address || '—'}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block' }}>ABN:</span>
+                      <strong>{currentSupplier.ABN || '—'}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block' }}>Payment Terms:</span>
+                      <strong>{currentSupplier.PaymentTerms || '—'}</strong>
+                    </div>
+                    {currentContact && (
+                      <>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Role:</span>
+                          <strong>{currentContact.Role || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Phone:</span>
+                          <strong>{currentContact.PhoneNumber || currentContact.MobileNumber || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Email:</span>
+                          <strong>{currentContact.Email || '—'}</strong>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: Agreement */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                  background: '#fbfdff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <FileCheck size={18} color="var(--primary)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                    2. Agreement Details
+                  </h3>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 2fr',
+                    gap: '12px',
+                  }}
+                >
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Agreement Type *
+                    </label>
+                    <select
+                      value={agreementType}
+                      onChange={(e) => setAgreementType(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      required
+                    >
+                      {AGREEMENT_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      {agreementType} Detail / Code *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={`Enter ${agreementType} identifier (e.g. Coupe 14A, Block East)`}
+                      value={agreementDetail}
+                      onChange={(e) => setAgreementDetail(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Plantation & Harvest */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                  background: '#fbfdff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <Calendar size={18} color="var(--primary)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                    3. Plantation & Harvest Period
+                  </h3>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '12px',
+                  }}
+                >
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Plantation Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Green Triangle Estate"
+                      value={plantation}
+                      onChange={(e) => setPlantation(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Harvest Period Start *
+                    </label>
+                    <input
+                      type="date"
+                      value={harvestPeriodStart}
+                      onChange={(e) => setHarvestPeriodStart(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Harvest Period End *
+                    </label>
+                    <input
+                      type="date"
+                      value={harvestPeriodEnd}
+                      onChange={(e) => setHarvestPeriodEnd(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Agreement Start Date
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Agreement End Date
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Grades, Products, Prices & Tonnes (Interactive Table) */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                  background: '#ffffff',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '6px',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Layers size={18} color="var(--primary)" />
+                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                      4. Grades, Products, Prices & Tonnes
+                    </h3>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setIsSettingsOpen(true)}
+                      style={{
+                        width: 'auto',
+                        padding: '5px 10px',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      title="Configure custom species and grades"
+                    >
+                      <SettingsIcon size={14} /> Settings
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddGradeRow}
+                      style={{
+                        width: 'auto',
+                        padding: '5px 12px',
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Plus size={14} /> Add Grade Row
+                    </button>
+                  </div>
+                </div>
+
+                <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>
+                  Add one row for each grade/product combination. Standard grades come from the reference PDF;
+                  delivered and remaining tonnes calculate dynamically.
+                </p>
+
+                {/* Table */}
+                <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Species</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '110px' }}>Product</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Grade</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '95px' }}>Offered $/t</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed $/t *</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed t *</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Delivered t</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '105px' }}>Remaining t</th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', width: '45px' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gradeRows.map((row, idx) => {
+                        const agreed = Number(row.AgreedTonnes) || 0
+                        const delivered = Number(row.DeliveredTonnes) || 0
+                        const remaining = Math.max(0, agreed - delivered)
+                        const availableGrades = getGradesFor(row.Species, row.ProductType)
+
+                        return (
+                          <tr key={row.tempId} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                            <td style={{ padding: '6px 8px' }}>
+                              <select
+                                value={row.Species}
+                                onChange={(e) => handleGradeRowChange(idx, 'Species', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                }}
+                              >
+                                {speciesList.map((s) => (
+                                  <option key={s.SpeciesName} value={s.SpeciesName}>
+                                    {s.SpeciesName}
+                                  </option>
+                                ))}
+                                {!speciesList.some((s) => s.SpeciesName === row.Species) && (
+                                  <option value={row.Species}>{row.Species}</option>
+                                )}
+                              </select>
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <select
+                                value={row.ProductType}
+                                onChange={(e) =>
+                                  handleGradeRowChange(
+                                    idx,
+                                    'ProductType',
+                                    e.target.value as 'Fresh Logs' | 'Burnt Logs',
+                                  )
+                                }
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                }}
+                              >
+                                {PRODUCT_TYPES.map((pt) => (
+                                  <option key={pt} value={pt}>
+                                    {pt}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <select
+                                value={row.GradeName}
+                                onChange={(e) => handleGradeRowChange(idx, 'GradeName', e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {availableGrades.map((g) => (
+                                  <option key={g} value={g}>
+                                    {g}
+                                  </option>
+                                ))}
+                                {!availableGrades.includes(row.GradeName) && row.GradeName && (
+                                  <option value={row.GradeName}>{row.GradeName}</option>
+                                )}
+                              </select>
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={row.OfferedPricePerTonne}
+                                onChange={(e) =>
+                                  handleGradeRowChange(idx, 'OfferedPricePerTonne', e.target.value)
+                                }
+                                style={{
+                                  width: '100%',
+                                  textAlign: 'right',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                }}
+                              />
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                required
+                                placeholder="0.00"
+                                value={row.AgreedPricePerTonne}
+                                onChange={(e) =>
+                                  handleGradeRowChange(idx, 'AgreedPricePerTonne', e.target.value)
+                                }
+                                style={{
+                                  width: '100%',
+                                  textAlign: 'right',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                required
+                                placeholder="0"
+                                value={row.AgreedTonnes}
+                                onChange={(e) =>
+                                  handleGradeRowChange(idx, 'AgreedTonnes', e.target.value)
+                                }
+                                style={{
+                                  width: '100%',
+                                  textAlign: 'right',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                  fontWeight: 600,
+                                }}
+                              />
+                            </td>
+
+                            <td style={{ padding: '6px 8px' }}>
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="0"
+                                value={row.DeliveredTonnes}
+                                onChange={(e) =>
+                                  handleGradeRowChange(idx, 'DeliveredTonnes', e.target.value)
+                                }
+                                style={{
+                                  width: '100%',
+                                  textAlign: 'right',
+                                  padding: '6px 8px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #cbd5e1',
+                                  fontSize: '0.85rem',
+                                }}
+                              />
+                            </td>
+
+                            <td
+                              style={{
+                                padding: '6px 12px',
+                                textAlign: 'right',
+                                fontWeight: 700,
+                                color: remaining > 0 ? '#0369a1' : '#16a34a',
+                              }}
+                            >
+                              {remaining.toLocaleString(undefined, {
+                                minimumFractionDigits: 0,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+
+                            <td style={{ padding: '6px 4px', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveGradeRow(idx)}
+                                style={{
+                                  width: 'auto',
+                                  padding: '4px',
+                                  background: 'transparent',
+                                  borderColor: 'transparent',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                }}
+                                title="Delete row"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+                        <td colSpan={5} style={{ padding: '10px 12px', textAlign: 'right' }}>
+                          Agreement Totals:
+                        </td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }}>
+                          {totals.totalAgreedTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
+                        </td>
+                        <td style={{ padding: '10px 8px', textAlign: 'right', color: '#16a34a' }}>
+                          {totals.totalDeliveredTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#0284c7' }}>
+                          {totals.totalRemainingTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
+                        </td>
+                        <td></td>
+                      </tr>
+                      <tr style={{ background: '#f0fdf4', borderTop: '1px solid #bbf7d0' }}>
+                        <td colSpan={5} style={{ padding: '8px 12px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>
+                          Estimated Contract Commitment (AUD):
+                        </td>
+                        <td colSpan={4} style={{ padding: '8px 12px', textAlign: 'left', color: '#15803d', fontWeight: 800 }}>
+                          ${totals.estimatedTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AUD
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* Section 5: Log Specification */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '18px',
+                  background: '#fbfdff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <Paperclip size={18} color="var(--primary)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                    5. Log Specification
+                  </h3>
+                </div>
+
+                <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>
+                  Attach one file (PDF or image, up to 10 MB) showing the log specification for this
+                  procurement. A PDF can have several pages.
+                </p>
+
+                {specError && (
+                  <div
+                    className="error-message"
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}
+                  >
+                    <AlertCircle size={16} />
+                    <span>{specError}</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  {pendingSpecFile ? (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: 600,
+                        fontSize: '0.88rem',
+                      }}
+                    >
+                      <Paperclip size={15} color="#0284c7" /> {pendingSpecFile.name}
+                      <span style={{ fontWeight: 400, color: '#92400e' }}>
+                        (will be saved when you save)
+                      </span>
+                    </span>
+                  ) : specFileId ? (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: 600,
+                        fontSize: '0.88rem',
+                      }}
+                    >
+                      <Paperclip size={15} color="#0284c7" /> {specFileName || 'Log specification'}
+                    </span>
+                  ) : (
+                    <span style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>No file attached.</span>
+                  )}
+
+                  {!pendingSpecFile && specFileId && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => void handleOpenSpec(specFileId)}
+                      style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem' }}
+                    >
+                      View
+                    </button>
+                  )}
+
+                  {(pendingSpecFile || specFileId) && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleRemoveSpec}
+                      style={{
+                        width: 'auto',
+                        padding: '5px 12px',
+                        fontSize: '0.8rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  )}
+
+                  <label
+                    className="secondary-button"
+                    style={{
+                      width: 'auto',
+                      padding: '5px 12px',
+                      fontSize: '0.8rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Upload size={14} />
+                    {pendingSpecFile || specFileId ? 'Replace File' : 'Choose File'}
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf,image/*"
+                      hidden
+                      onChange={(event) => {
+                        handleSpecFileChosen(event.target.files)
+                        event.target.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Section 6: Status & Acceptance */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '16px',
+                  marginBottom: '20px',
+                  background: '#fbfdff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <UserCheck size={18} color="var(--primary)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
+                    6. Status & Acceptance
+                  </h3>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '12px',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Status *
+                    </label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {STATUSES.map((st) => (
+                        <option key={st} value={st}>
+                          {st}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Acceptance Date
+                    </label>
+                    <input
+                      type="date"
+                      value={acceptanceDate}
+                      onChange={(e) => setAcceptanceDate(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Acceptance Time
+                    </label>
+                    <input
+                      type="time"
+                      value={acceptanceTime}
+                      onChange={(e) => setAcceptanceTime(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Acceptance Method
+                    </label>
+                    <select
+                      value={acceptanceMethod}
+                      onChange={(e) => setAcceptanceMethod(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    >
+                      {ACCEPTANCE_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Accepted By Person
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Signatory name"
+                      value={acceptedByPerson}
+                      onChange={(e) => setAcceptedByPerson(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Acceptance Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Acceptance conditions or contract reference"
+                      value={acceptanceNotes}
+                      onChange={(e) => setAcceptanceNotes(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      General Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Any general comments, delivery notes, or road permits"
+                      value={generalNotes}
+                      onChange={(e) => setGeneralNotes(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        fontSize: '0.85rem',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Actions Bar */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  paddingTop: '8px',
+                  borderTop: '1px solid var(--border)',
+                }}
+              >
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  style={{
+                    width: 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '12px 24px',
+                    fontSize: '0.95rem',
+                  }}
+                >
+                  <Save size={18} />
+                  {isSaving
+                    ? 'Saving...'
+                    : mode === 'edit'
+                    ? 'Save Changes'
+                    : 'Save Procurement'}
+                </button>
+
+                {mode === 'edit' && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={isSaving}
+                    onClick={handleSaveNew}
+                    style={{
+                      width: 'auto',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '12px 20px',
+                    }}
+                    title="Save current details as a brand new agreement"
+                  >
+                    <Plus size={16} /> Save as New (Duplicate)
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleCancelForm}
+                  style={{
+                    width: 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '12px 18px',
+                  }}
+                >
+                  <RotateCcw size={16} /> Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ==================== RIGHT: PROCUREMENT REGISTER ==================== */}
+        <div
+          style={{
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '14px',
+              flexWrap: 'wrap',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <TableIcon size={20} color="var(--primary)" />
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>
+                Procurement Register
+              </h3>
+              <span
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  background: 'var(--primary-soft)',
+                  color: 'var(--primary-dark)',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                }}
+              >
+                {filteredProcurements.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Register Search & Filters */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search
+                size={16}
+                style={{
+                  position: 'absolute',
+                  left: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#94a3b8',
+                }}
+              />
+              <input
+                type="text"
+                placeholder="Search Ref, Supplier, Coupe, Plantation..."
+                value={registerSearch}
+                onChange={(e) => setRegisterSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px 8px 32px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                  fontSize: '0.85rem',
+                }}
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: '#fff',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+              }}
+            >
+              <option value="All">All Statuses</option>
+              {STATUSES.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Procurements List / Table */}
+          {filteredProcurements.length === 0 ? (
+            <div
+              style={{
+                padding: '36px 16px',
+                textAlign: 'center',
+                border: '2px dashed var(--border)',
+                borderRadius: '8px',
+                color: 'var(--muted)',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600 }}>No procurements match this criteria.</p>
+              <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>
+                Create an agreement or clear the search filter.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '720px', overflowY: 'auto' }}>
+              {filteredProcurements.map((proc) => {
+                const isSelected = selectedProcRef === proc.ProcurementRef
+                const stColor = getStatusColor(proc.Status)
+                const tonnes = getProcurementTonnes(proc.ProcurementRef)
+                const percentDelivered =
+                  tonnes.agreed > 0
+                    ? Math.min(100, Math.round((tonnes.delivered / tonnes.agreed) * 100))
+                    : 0
+                const suppName =
+                  suppliers.find(
+                    (s) =>
+                      String(s.SupplierID) === String(proc.SupplierID) ||
+                      String(s.SupplierReference) === String(proc.SupplierID),
+                  )?.SupplierName || `Supplier #${proc.SupplierID}`
+
+                return (
+                  <div
+                    key={proc.ProcurementRef}
+                    onClick={() => handleSelectProcurement(proc)}
+                    style={{
+                      border: isSelected
+                        ? '2px solid var(--primary)'
+                        : '1px solid var(--border)',
+                      background: isSelected ? 'var(--primary-soft)' : '#ffffff',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong style={{ fontSize: '1rem', color: 'var(--primary-dark)' }}>
+                          {proc.ProcurementRef}
+                        </strong>
+                        <span
+                          style={{
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: stColor.bg,
+                            color: stColor.text,
+                            border: `1px solid ${stColor.border}`,
+                          }}
+                        >
+                          {proc.Status}
+                        </span>
+                        {proc.LogSpecFileID && (
+                          <span
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => {
+                              event.stopPropagation()
+                              void handleOpenSpec(proc.LogSpecFileID || '')
+                            }}
+                            title={`Log Specification: ${proc.LogSpecFileName || 'attached'} (double-click to open)`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              color: '#0284c7',
+                              cursor: 'pointer',
+                              padding: '2px',
+                            }}
+                          >
+                            <Paperclip size={16} />
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                        {proc.AgreementType}: {proc.AgreementDetail || '—'}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
+                      {suppName}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '12px',
+                        fontSize: '0.8rem',
+                        color: '#475569',
+                        marginBottom: '8px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      {proc.Plantation && (
+                        <span>
+                          Plantation: <strong>{proc.Plantation}</strong>
+                        </span>
+                      )}
+                      {proc.Species && (
+                        <span>
+                          Species: <strong>{proc.Species}</strong>
+                        </span>
+                      )}
+                      {proc.HarvestPeriodStart && (
+                        <span>
+                          Harvest: {proc.HarvestPeriodStart} to {proc.HarvestPeriodEnd || '—'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Delivery Progress Bar */}
+                    <div style={{ marginTop: '6px' }}>
                       <div
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '6px',
+                          fontSize: '0.78rem',
+                          marginBottom: '3px',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <strong style={{ fontSize: '1rem', color: 'var(--primary-dark)' }}>
-                            {proc.ProcurementRef}
-                          </strong>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              background: stColor.bg,
-                              color: stColor.text,
-                              border: `1px solid ${stColor.border}`,
-                            }}
-                          >
-                            {proc.Status}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                          {proc.AgreementType}: {proc.AgreementDetail || '—'}
+                        <span>
+                          Delivered: <strong>{tonnes.delivered} t</strong> / {tonnes.agreed} t
+                        </span>
+                        <span style={{ color: tonnes.remaining > 0 ? '#0284c7' : '#16a34a', fontWeight: 700 }}>
+                          {tonnes.remaining} t left ({percentDelivered}%)
                         </span>
                       </div>
-
-                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                        {suppName}
-                      </div>
-
                       <div
                         style={{
-                          display: 'flex',
-                          gap: '12px',
-                          fontSize: '0.8rem',
-                          color: '#475569',
-                          marginBottom: '8px',
-                          flexWrap: 'wrap',
+                          height: '6px',
+                          background: '#e2e8f0',
+                          borderRadius: '3px',
+                          overflow: 'hidden',
                         }}
                       >
-                        {proc.Plantation && (
-                          <span>
-                            Plantation: <strong>{proc.Plantation}</strong>
-                          </span>
-                        )}
-                        {proc.Species && (
-                          <span>
-                            Species: <strong>{proc.Species}</strong>
-                          </span>
-                        )}
-                        {proc.HarvestPeriodStart && (
-                          <span>
-                            Harvest: {proc.HarvestPeriodStart} to {proc.HarvestPeriodEnd || '—'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Delivery Progress Bar */}
-                      <div style={{ marginTop: '6px' }}>
                         <div
                           style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontSize: '0.78rem',
-                            marginBottom: '3px',
+                            width: `${percentDelivered}%`,
+                            height: '100%',
+                            background:
+                              percentDelivered >= 100
+                                ? '#16a34a'
+                                : 'linear-gradient(90deg, #0284c7, #38bdf8)',
                           }}
-                        >
-                          <span>
-                            Delivered: <strong>{tonnes.delivered} t</strong> / {tonnes.agreed} t
-                          </span>
-                          <span style={{ color: tonnes.remaining > 0 ? '#0284c7' : '#16a34a', fontWeight: 700 }}>
-                            {tonnes.remaining} t left ({percentDelivered}%)
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            height: '6px',
-                            background: '#e2e8f0',
-                            borderRadius: '3px',
-                            overflow: 'hidden',
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${percentDelivered}%`,
-                              height: '100%',
-                              background:
-                                percentDelivered >= 100
-                                  ? '#16a34a'
-                                  : 'linear-gradient(90deg, #0284c7, #38bdf8)',
-                            }}
-                          />
-                        </div>
+                        />
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Modals */}

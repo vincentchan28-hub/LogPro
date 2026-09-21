@@ -120,7 +120,8 @@ type MoneyRowProps = {
     value: string
     onChange: (text: string) => void
   }
-  style?: 'total' | 'result'
+style?: 'total' | 'result'
+  hidden?: boolean
 }
 
 function MoneyRow({
@@ -132,11 +133,24 @@ function MoneyRow({
   entry,
   containerEntry,
   style,
+  hidden,
 }: MoneyRowProps) {
+  if (hidden) {
+    return null
+  }
   return (
     <tr className={style ? `row-${style}` : ''}>
       <th scope="row">
-        <span className="row-label">{label}</span>
+        <span className="row-label">
+          {label.startsWith('Less:') ? (
+            <>
+              <span className="less-word">Less:</span>
+              {label.slice(5)}
+            </>
+          ) : (
+            label
+          )}
+        </span>
         {hint && <span className="row-hint">{hint}</span>}
       </th>
 
@@ -228,6 +242,8 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   const [label, setLabel] = useState('')
   const [values, setValues] = useState<FieldValues>(emptyValues)
   const [sellingIn, setSellingIn] = useState<'USD' | 'LOCAL'>('USD')
+  const [combinePackage, setCombinePackage] = useState(false)
+  const [showCommission, setShowCommission] = useState(true)
 
   const [live, setLive] = useState<RatesResult | null>(null)
   const [ratesLoading, setRatesLoading] = useState(true)
@@ -286,14 +302,14 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
         selling: parseAmount(values.selling),
         clearance: parseAmount(values.clearance),
         seaFreight: parseAmount(values.seaFreight),
-        transport: parseAmount(values.transport),
-        fumigation: parseAmount(values.fumigation),
+        transport: combinePackage ? 0 : parseAmount(values.transport),
+        fumigation: combinePackage ? 0 : parseAmount(values.fumigation),
         packing: parseAmount(values.packing),
-        commission: parseAmount(values.commission),
+        commission: showCommission ? parseAmount(values.commission) : 0,
       },
       rates,
     )
-  }, [rates, local, sellingCurrency, values])
+  }, [rates, local, sellingCurrency, values, combinePackage, showCommission])
 
   const loadRates = useCallback(async () => {
     if (typeof window.logPro?.getRates !== 'function') {
@@ -380,6 +396,23 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
 
     saveDefaultTonnage(tonnagePerBox)
     setDefaultTonnage(tonnagePerBox)
+  }
+
+  function toggleCombinePackage(checked: boolean) {
+    setCombinePackage(checked)
+    // Start the three cost boxes fresh so old numbers don't confuse things.
+    setValues((current) => ({
+      ...current,
+      transport: '',
+      fumigation: '',
+      packing: '',
+    }))
+    setContainerRates((current) => ({
+      ...current,
+      transport: '',
+      fumigation: '',
+      packing: '',
+    }))
   }
 
   function changeCountry(name: string) {
@@ -715,6 +748,28 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
           themselves.
         </p>
 
+        <div className="option-toggles">
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={combinePackage}
+              onChange={(event) => toggleCombinePackage(event.target.checked)}
+            />
+            <span className="toggle-slider" />
+            <span>Combine transport, fumigation &amp; packing (Package Packing Cost)</span>
+          </label>
+
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={showCommission}
+              onChange={(event) => setShowCommission(event.target.checked)}
+            />
+            <span className="toggle-slider" />
+            <span>Show trader commission</span>
+          </label>
+        </div>
+
         <div className="table-scroll">
           <table className="costing-table">
             <colgroup>
@@ -782,7 +837,7 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
               />
               <MoneyRow
                 label="Less: Transport"
-                hint="Trucking to the port"
+                hidden={combinePackage}
                 amountAud={result?.transportAud ?? 0}
                 currencies={currencies}
                 rates={rates}
@@ -802,6 +857,7 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
               />
               <MoneyRow
                 label="Less: Fumigation"
+                hidden={combinePackage}
                 amountAud={result?.fumigationAud ?? 0}
                 currencies={currencies}
                 rates={rates}
@@ -820,7 +876,8 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
                 }
               />
               <MoneyRow
-                label="Less: Packing"
+                label={combinePackage ? 'Less: Package Packing Cost' : 'Less: Packing'}
+                hint={combinePackage ? 'Transport, fumigation and packing in one cost' : undefined}
                 amountAud={result?.packingAud ?? 0}
                 currencies={currencies}
                 rates={rates}
@@ -855,6 +912,7 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
               />
               <MoneyRow
                 label="Less: Trader commission (optional)"
+                hidden={!showCommission}
                 amountAud={result?.commissionAud ?? 0}
                 currencies={currencies}
                 rates={rates}

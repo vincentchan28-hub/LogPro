@@ -56,6 +56,9 @@ export type Procurement = {
   AcceptanceMethod: 'Email' | 'Phone' | 'In Person' | string
   AcceptedByPerson: string
   AcceptanceNotes: string
+  LogSpecFileID?: string
+  LogSpecFileName?: string
+  LogSpecFileType?: string
   Notes: string
   CreatedBy?: string
   CreatedDate?: string
