@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: 5000,
     allowedHosts: true,
     watch: {
       // Stops the app reloading itself when Excel files are saved
