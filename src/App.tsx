@@ -12,7 +12,8 @@ import {
 import { ProcurementsTab } from './components/ProcurementsTab'
 import { HomeOverview } from './components/HomeOverview'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
-import { Download, Building, Plus, Trees } from 'lucide-react'
+import { SettingsModal } from './components/SettingsModal'
+import { Building, Plus, Trees, Settings as SettingsIcon } from 'lucide-react'
 import './App.css'
 
 type SupplierForm = {
@@ -50,29 +51,14 @@ const pageList: { id: Page; label: string; description: string }[] = [
     description: 'Every price change, with the reason, date and who made it.',
   },
   {
-    id: 'suppliers',
-    label: 'Suppliers',
-    description: 'Manage businesses and people who supply logs.',
-  },
-  {
     id: 'costing',
     label: 'Costing',
     description: 'Work out the most you can afford to offer a supplier, per tonne.',
   },
   {
-    id: 'reports',
-    label: 'Reports',
-    description: 'Summaries of your procurements and tonnes.',
-  },
-  {
     id: 'resales',
     label: 'Resales',
     description: 'A small record of logs sold on (optional).',
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    description: 'Users, species, grades and other settings.',
   },
 ]
 
@@ -109,6 +95,9 @@ function App() {
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm)
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+
+  // Settings modal state
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   useEffect(() => {
     // Default to log_procurement.xlsx if nothing is saved
@@ -165,20 +154,6 @@ function App() {
     } catch {
       setErrorMessage('Could not create workbook.')
     }
-  }
-
-  function handleCloseWorkbook() {
-    setSelectedWorkbook('')
-    setSuppliers([])
-    setProcurements([])
-    setGrades([])
-    setPriceHistory([])
-    setErrorMessage('')
-    setCurrentPage('home')
-    setIsSupplierFormOpen(false)
-    setSupplierForm(emptySupplierForm)
-    setSupplierError('')
-    rememberWorkbook('')
   }
 
   function refreshWorkbookData() {
@@ -398,18 +373,12 @@ function App() {
             <div className="top-bar-actions">
               <button
                 type="button"
-                className="export-workbook-button"
-                onClick={() => window.logPro.exportWorkbookFile(selectedWorkbook)}
-                title="Download the updated Excel workbook with all sheets & costings"
+                className="settings-header-button"
+                onClick={() => setIsSettingsOpen(true)}
+                title="Settings & Administration"
               >
-                <Download size={15} /> Export .xlsx
-              </button>
-              <button
-                type="button"
-                className="close-workbook-button"
-                onClick={handleCloseWorkbook}
-              >
-                Switch Workbook
+                <SettingsIcon size={16} />
+                <span>Settings</span>
               </button>
             </div>
           </header>
@@ -428,22 +397,19 @@ function App() {
               ))}
             </div>
           </nav>
-
-          <section className="workbook-banner">
-            <div className="banner-left">
-              <span className="banner-label">Active Database:</span>
-              <span className="banner-filename">{selectedWorkbook}</span>
-              <span className="banner-badge">XLSX Engine</span>
-            </div>
-            <div className="banner-right">
-              <span>Browser Auto-Persist Active</span>
-              <span className="banner-dot">•</span>
-              <span>All 11 Core Sheets Verified</span>
-            </div>
-          </section>
         </div>
 
         {renderPage()}
+
+        {/* Unified Settings Modal */}
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          workbookPath={selectedWorkbook}
+          suppliers={suppliers}
+          onOpenAddSupplier={openSupplierForm}
+          onRefresh={refreshWorkbookData}
+        />
 
         {isSupplierFormOpen && (
           <div className="modal-backdrop">

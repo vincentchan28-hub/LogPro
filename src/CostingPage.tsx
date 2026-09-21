@@ -265,6 +265,44 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
 
+  // Track the snapshot of fields at the time of initial load or last successful save
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() =>
+    JSON.stringify({
+      countryName: COUNTRIES[0].name,
+      label: '',
+      values: emptyValues,
+      sellingIn: 'USD',
+      combinePackage: false,
+      showCommission: true,
+      useOwnRates: false,
+      ownAudPerUsd: '',
+      ownLocalPerUsd: '',
+      tonnagePerBox: readDefaultTonnage(),
+      containerRates: {
+        seaFreight: '',
+        transport: '',
+        fumigation: '',
+        packing: '',
+      },
+    }),
+  )
+
+  const currentSnapshot = JSON.stringify({
+    countryName,
+    label,
+    values,
+    sellingIn,
+    combinePackage,
+    showCommission,
+    useOwnRates,
+    ownAudPerUsd,
+    ownLocalPerUsd,
+    tonnagePerBox,
+    containerRates,
+  })
+
+  const hasChanges = currentSnapshot !== savedSnapshot
+
   const country =
     COUNTRIES.find((item) => item.name === countryName) ?? COUNTRIES[0]
   const local = country.currency
@@ -517,6 +555,21 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
       }
 
       setHistory(response.costings)
+      setSavedSnapshot(
+        JSON.stringify({
+          countryName,
+          label,
+          values,
+          sellingIn,
+          combinePackage,
+          showCommission,
+          useOwnRates,
+          ownAudPerUsd,
+          ownLocalPerUsd,
+          tonnagePerBox,
+          containerRates,
+        }),
+      )
       setSaveMessage(
         `Saved as ${response.costings[0]?.CostingReference ?? 'a new costing'}.`,
       )
@@ -942,11 +995,11 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
         )}
       </div>
 
-      <div className="costing-card">
-        <div className="card-heading">
-          <h3>Save this costing</h3>
+      <div className="costing-card costing-save-card">
+        <div className="costing-save-action">
           <button
             type="button"
+            className={`save-costing-btn ${hasChanges ? 'has-changes' : 'unchanged'}`}
             onClick={() => void handleSave()}
             disabled={isSaving || !rates}
           >
@@ -956,11 +1009,6 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
 
         {saveMessage && <p className="notice notice-ok">{saveMessage}</p>}
         {saveError && <p className="notice notice-error">{saveError}</p>}
-
-        <p className="muted small">
-          Saving keeps the numbers and the exchange rates used, so you can look
-          back at them later.
-        </p>
       </div>
 
       <div className="costing-card">
