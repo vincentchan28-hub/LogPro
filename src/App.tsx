@@ -12,6 +12,7 @@ import {
 import { ProcurementsTab } from './components/ProcurementsTab'
 import { HomeOverview } from './components/HomeOverview'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
+import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
 import { Building, Plus, Trees, Settings as SettingsIcon } from 'lucide-react'
 import './App.css'
@@ -56,9 +57,9 @@ const pageList: { id: Page; label: string; description: string }[] = [
     description: 'Work out the most you can afford to offer a supplier, per tonne.',
   },
   {
-    id: 'resales',
-    label: 'Resales',
-    description: 'A small record of logs sold on (optional).',
+    id: 'priceList',
+    label: 'Price List',
+    description: 'View purchase prices and enter resale prices for each procurement.',
   },
 ]
 
@@ -316,6 +317,17 @@ function App() {
       return (
         <CostingPage
           workbookPath={selectedWorkbook}
+        />
+      )
+    }
+
+    if (currentPage === 'priceList') {
+      return (
+        <PriceListTab
+          workbookPath={selectedWorkbook}
+          procurements={procurements}
+          suppliers={suppliers}
+          onRefresh={refreshWorkbookData}
         />
       )
     }

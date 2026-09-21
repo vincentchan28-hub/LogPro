@@ -5,7 +5,7 @@ export type Page =
   | 'suppliers'
   | 'costing'
   | 'reports'
-  | 'resales'
+  | 'priceList'
   | 'settings'
 
 export type Supplier = {
@@ -74,6 +74,7 @@ export type ProcurementGrade = {
   GradeName: string
   OfferedPricePerTonne: number
   AgreedPricePerTonne: number
+  ResalePrice: number
   AgreedTonnes: number
   DeliveredTonnes: number
   RemainingTonnes: number
