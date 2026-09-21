@@ -473,19 +473,28 @@ export function readCostings(workbook: XLSX.WorkBook): CostingRecord[] {
     .filter((c) => c.SellingPriceEntered > 0 || c.CostingRef)
 }
 
-export function getNextProcurementRef(workbook: XLSX.WorkBook): string {
+function createProcurementPrefix(supplierName: string): string {
+  const lettersOnly = supplierName.replace(/[^a-zA-Z]/g, '').toUpperCase()
+  if (lettersOnly === '') {
+    return 'PRO'
+  }
+  return `${lettersOnly}XXX`.slice(0, 3)
+}
+
+export function getNextProcurementRef(workbook: XLSX.WorkBook, supplierName = ''): string {
+  const prefix = createProcurementPrefix(supplierName)
   const procurements = readProcurements(workbook)
   let highest = 0
   for (const p of procurements) {
     const ref = p.ProcurementRef || ''
-    if (ref.startsWith('PROC-')) {
-      const num = parseInt(ref.replace('PROC-', ''), 10)
+    if (ref.startsWith(`${prefix}-`)) {
+      const num = parseInt(ref.slice(prefix.length + 1), 10)
       if (!isNaN(num) && num > highest) {
         highest = num
       }
     }
   }
-  return `PROC-${String(highest + 1).padStart(4, '0')}`
+  return `${prefix}-${String(highest + 1).padStart(4, '0')}`
 }
 
 function populateDefaultsIfEmpty(workbook: XLSX.WorkBook): void {
@@ -967,7 +976,12 @@ export const webLogPro = {
 
     try {
       const procurements = readProcurements(workbook)
-      const ref = getNextProcurementRef(workbook)
+      const chosenSupplier = readSuppliers(workbook).find(
+        (s) =>
+          String(s.SupplierID) === String(data.SupplierID) ||
+          String(s.SupplierReference) === String(data.SupplierID),
+      )
+      const ref = getNextProcurementRef(workbook, chosenSupplier?.SupplierName || '')
       const now = formatTimestamp()
 
       const newProcurement: Procurement = {
