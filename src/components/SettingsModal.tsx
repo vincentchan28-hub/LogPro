@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
 import {
   Settings,
   Building,
@@ -21,6 +21,42 @@ import {
 } from '../types'
 
 type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook'
+
+// The name the browser uses to remember the size of the Settings box.
+const SETTINGS_SIZE_KEY = 'logpro.settingsModalSize'
+
+// The standard size used until you resize the box yourself.
+const DEFAULT_SETTINGS_SIZE = { width: 900, height: 620 }
+
+// Reads the size you last chose. Uses the standard size if nothing was saved.
+function readSavedSize(): { width: number; height: number } {
+  try {
+    const text = window.localStorage.getItem(SETTINGS_SIZE_KEY)
+    if (text) {
+      const saved = JSON.parse(text)
+      const width = Number(saved.width)
+      const height = Number(saved.height)
+      if (width >= 480 && height >= 320) {
+        return { width, height }
+      }
+    }
+  } catch {
+    // If the browser blocks saving, use the standard size.
+  }
+  return DEFAULT_SETTINGS_SIZE
+}
+
+// Saves the size so it is still there next time.
+function saveSize(width: number, height: number) {
+  try {
+    window.localStorage.setItem(
+      SETTINGS_SIZE_KEY,
+      JSON.stringify({ width, height }),
+    )
+  } catch {
+    // If the browser blocks saving, carry on without it.
+  }
+}
 
 type SettingsModalProps = {
   isOpen: boolean
@@ -160,6 +196,38 @@ export function SettingsModal({
     }
   }, [workbookPath, suppliers])
 
+  const modalRef = useRef<HTMLElement | null>(null)
+  const pressStartedOnBackdrop = useRef(false)
+
+  // Remembers the size whenever you drag the corner to resize the box.
+  useEffect(() => {
+    if (!isOpen) return
+    const box = modalRef.current
+    if (!box || typeof ResizeObserver === 'undefined') return
+
+    let timer: number | undefined
+    let isFirstReport = true
+
+    const observer = new ResizeObserver(() => {
+      // The first report is just the box appearing, not you resizing it.
+      if (isFirstReport) {
+        isFirstReport = false
+        return
+      }
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        saveSize(box.offsetWidth, box.offsetHeight)
+      }, 150)
+    })
+
+    observer.observe(box)
+
+    return () => {
+      observer.disconnect()
+      window.clearTimeout(timer)
+    }
+  }, [isOpen])
+
   if (!isOpen) return null
 
   // Species handlers
@@ -227,13 +295,38 @@ export function SettingsModal({
         g.SpeciesName === selectedSpeciesForGrade),
   )
 
+  const savedSize = readSavedSize()
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === e.currentTarget
+      }}
+      onClick={(e) => {
+        // Only close if the press and the release both happened on the dark background.
+        if (e.target === e.currentTarget && pressStartedOnBackdrop.current) {
+          onClose()
+        }
+      }}
+    >
       <section
+        ref={modalRef}
         className="modal-card settings-modal-card"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
+        style={{
+          width: `${savedSize.width}px`,
+          height: `${savedSize.height}px`,
+          minWidth: 'min(640px, 96vw)',
+          minHeight: 'min(420px, 94vh)',
+          maxWidth: '96vw',
+          maxHeight: '94vh',
+          padding: 0,
+          overflow: 'hidden',
+          resize: 'both',
+        }}
       >
         {/* Modal Header */}
         <div className="settings-modal-header">

@@ -320,6 +320,16 @@ button {
 .settings-icon-primary {
   color: #0284c7;
   flex-shrink: 0;
+  animation: settings-cog-spin 6s linear infinite;
+}
+
+@keyframes settings-cog-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .settings-modal-title h3 {
@@ -372,8 +382,8 @@ button {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  border-radius: 6px;
-  border: none;
+  border-radius: 2px;
+  border: 1px solid transparent;
   background: transparent;
   color: #64748b;
   font-size: 0.88rem;
@@ -389,8 +399,9 @@ button {
 }
 
 .settings-tab-btn.active {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #e5e7eb;
+  color: #0f172a;
+  border-color: #cbd5e1;
   font-weight: 700;
 }
 
