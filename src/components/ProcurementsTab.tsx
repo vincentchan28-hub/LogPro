@@ -64,7 +64,7 @@ type GradeRowState = {
   tempId: string
   ProcurementGradeID?: number | string
   Species: string
-  ProductType: 'Fresh Logs' | 'Burnt Logs'
+  ProductType: 'Green Logs' | 'Burnt Logs'
   GradeName: string
   OfferedPricePerTonne: string | number
   AgreedPricePerTonne: string | number
@@ -147,7 +147,7 @@ export function ProcurementsTab({
     {
       tempId: getNextRowTempId(),
       Species: 'Radiata Pine',
-      ProductType: 'Fresh Logs',
+      ProductType: 'Green Logs',
       GradeName: 'K Grade',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
@@ -234,7 +234,7 @@ export function ProcurementsTab({
   // ---------------- Grade rows ----------------
 
   function handleAddGradeRow() {
-    const defaultProduct = 'Fresh Logs'
+    const defaultProduct = 'Green Logs'
     const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
     const newRow: GradeRowState = {
       tempId: getNextRowTempId(),
@@ -283,10 +283,10 @@ export function ProcurementsTab({
 
   function getGradesFor(
     speciesName?: string,
-    productType?: 'Fresh Logs' | 'Burnt Logs',
+    productType?: 'Green Logs' | 'Burnt Logs',
     customSupplierId?: string | number,
   ): string[] {
-    const pt = productType || 'Fresh Logs'
+    const pt = productType || 'Green Logs'
     const targetSuppId =
       customSupplierId !== undefined
         ? String(customSupplierId).trim()
@@ -445,7 +445,7 @@ export function ProcurementsTab({
     setSuccessMsg('')
 
     // Reset grades to 1 clean row
-    const defaultProduct = 'Fresh Logs'
+    const defaultProduct = 'Green Logs'
     const available = getGradesFor(speciesList[0]?.SpeciesName, defaultProduct)
     setGradeRows([
       {
@@ -511,7 +511,7 @@ export function ProcurementsTab({
           tempId: getNextRowTempId(),
           ProcurementGradeID: g.ProcurementGradeID,
           Species: g.Species,
-          ProductType: g.ProductType as 'Fresh Logs' | 'Burnt Logs',
+          ProductType: g.ProductType as 'Green Logs' | 'Burnt Logs',
           GradeName: g.GradeName,
           OfferedPricePerTonne: g.OfferedPricePerTonne,
           AgreedPricePerTonne: g.AgreedPricePerTonne,
@@ -525,7 +525,7 @@ export function ProcurementsTab({
         {
           tempId: getNextRowTempId(),
           Species: proc.Species || 'Radiata Pine',
-          ProductType: 'Fresh Logs',
+          ProductType: 'Green Logs',
           GradeName: 'K Grade',
           OfferedPricePerTonne: '',
           AgreedPricePerTonne: '',
@@ -764,7 +764,7 @@ export function ProcurementsTab({
         ) {
           detectedChanges.push({
             gradeName: String(newG.GradeName || ''),
-            productType: String(newG.ProductType || 'Fresh Logs'),
+            productType: String(newG.ProductType || 'Green Logs'),
             oldPrice: Number(oldG.AgreedPricePerTonne),
             newPrice: Number(newG.AgreedPricePerTonne),
             diff: Number(newG.AgreedPricePerTonne) - Number(oldG.AgreedPricePerTonne),
@@ -1589,7 +1589,7 @@ export function ProcurementsTab({
                                   handleGradeRowChange(
                                     idx,
                                     'ProductType',
-                                    e.target.value as 'Fresh Logs' | 'Burnt Logs',
+                                    e.target.value as 'Green Logs' | 'Burnt Logs',
                                   )
                                 }
                                 style={{

@@ -70,7 +70,7 @@ HEADERS = {
 "GradeDefinitions": ["GradeDefinitionID", "SpeciesName", "ProductType", "GradeName", "IsStandard", "Notes"],
 }
 STANDARD_GRADES = {
-"Fresh Logs": [
+"Green Logs": [
 "SA Grade", "A Grade", "K Grade", "KI Grade",
 "MP Grade", "Big MP", "Pulp"
 ],
@@ -307,7 +307,7 @@ grade_name = str(grade_name).strip()
 if not species_name:
 raise ValueError("Species name is required.")
 if product_type not in PRODUCT_TYPES:
-raise ValueError("Product type must be Fresh Logs or Burnt Logs.")
+raise ValueError("Product type must be Green Logs or Burnt Logs.")
 if not grade_name:
 raise ValueError("Grade name is required.")
 for record in get_grade_definitions(wb, species_name, product_type):
@@ -378,7 +378,7 @@ STATUSES = [
 "Draft", "Waiting for Acceptance", "Accepted",
 "Active", "Completed", "Cancelled"
 ]
-PRODUCT_TYPES = ["Fresh Logs", "Burnt Logs"]
+PRODUCT_TYPES = ["Green Logs", "Burnt Logs"]
 AGREEMENT_TYPES = ["Block", "Coupe", "Harvest", "Contract Number"]
 class AddContactDialog:
 def __init__(self, parent):
@@ -976,7 +976,7 @@ width=4
 ).pack(side="right", padx=4)
 self._grade_row_settings = {
 "species": "",
-"product_type": "Fresh Logs",
+"product_type": "Green Logs",
 "grades": [],
 }
 self._load_grade_settings()
@@ -1229,7 +1229,7 @@ def _load_grade_settings(self):
 """Load the shared species/product/grade choices for new rows."""
 try:
 saved_species = get_setting("grade_table_species", "")
-saved_product = get_setting("grade_table_product_type", "Fresh Logs") or "Fresh Logs"
+saved_product = get_setting("grade_table_product_type", "Green Logs") or "Green Logs"
 saved_grades = get_setting("grade_table_grades", "")
 wb = load_workbook(self.excel_filepath)
 species_records = get_species_definitions(wb)
@@ -1251,7 +1251,7 @@ self._grade_row_settings = {
 except Exception:
 self._grade_row_settings = {
 "species": "",
-"product_type": "Fresh Logs",
+"product_type": "Green Logs",
 "grades": [],
 }
 def _open_grade_settings(self):
@@ -1282,7 +1282,7 @@ species_var = tk.StringVar(value=self._grade_row_settings.get("species", ""))
 species_combo = ttk.Combobox(frame, textvariable=species_var, state="readonly")
 species_combo.grid(row=1, column=1, sticky="ew", padx=5, pady=6)
 ttk.Label(frame, text="Product Type").grid(row=2, column=0, sticky="w", padx=5, pady=6)
-product_var = tk.StringVar(value=self._grade_row_settings.get("product_type", "Fresh Logs"))
+product_var = tk.StringVar(value=self._grade_row_settings.get("product_type", "Green Logs"))
 product_combo = ttk.Combobox(
 frame, textvariable=product_var,
 values=PRODUCT_TYPES, state="readonly"
@@ -1552,7 +1552,7 @@ wb.close()
 except Exception:
 species_values = []
 species_default = settings.get("species", "") or (species_values[0] if species_values else "")
-product_default = settings.get("product_type", "Fresh Logs") or "Fresh Logs"
+product_default = settings.get("product_type", "Green Logs") or "Green Logs"
 species_var = tk.StringVar(value=species_default)
 product_var = tk.StringVar(value=product_default)
 grade_var = tk.StringVar()

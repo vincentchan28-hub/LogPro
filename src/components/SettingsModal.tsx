@@ -87,7 +87,7 @@ export function SettingsModal({
   const [speciesSubTab, setSpeciesSubTab] = useState<'species' | 'grades'>('species')
   const [newSpeciesName, setNewSpeciesName] = useState('')
   const [newSpeciesNotes, setNewSpeciesNotes] = useState('')
-  const [selectedProductType, setSelectedProductType] = useState<'Fresh Logs' | 'Burnt Logs'>('Fresh Logs')
+  const [selectedProductType, setSelectedProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [newGradeName, setNewGradeName] = useState('')
   const [newGradeSpeciesName, setNewGradeSpeciesName] = useState('')
@@ -112,7 +112,7 @@ export function SettingsModal({
   const [editGradeName, setEditGradeName] = useState('')
   const [editGradeSupplierId, setEditGradeSupplierId] = useState('')
   const [editGradeSpeciesName, setEditGradeSpeciesName] = useState('')
-  const [editGradeProductType, setEditGradeProductType] = useState<'Fresh Logs' | 'Burnt Logs'>('Fresh Logs')
+  const [editGradeProductType, setEditGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
   const [editGradeNotes, setEditGradeNotes] = useState('')
   const [deletingGrade, setDeletingGrade] = useState<GradeDefinition | null>(null)
   const [isSavingGrade, setIsSavingGrade] = useState(false)
@@ -572,7 +572,7 @@ export function SettingsModal({
     setEditGradeName(g.GradeName)
     setEditGradeSupplierId(String(g.SupplierID || ''))
     setEditGradeSpeciesName(g.SpeciesName || '')
-    setEditGradeProductType((g.ProductType as any) || 'Fresh Logs')
+    setEditGradeProductType((g.ProductType as any) || 'Green Logs')
     setEditGradeNotes(g.Notes || '')
     setSpeciesError('')
     setSpeciesSuccess('')
@@ -712,38 +712,17 @@ export function SettingsModal({
             {/* Delete Mode Toggle */}
             <label
               htmlFor="settings-delete-mode-toggle"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                padding: '5px 12px',
-                borderRadius: '20px',
-                background: isDeleteEnabled ? '#fee2e2' : '#f8fafc',
-                border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
-                color: isDeleteEnabled ? '#991b1b' : '#475569',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                userSelect: 'none',
-                boxShadow: isDeleteEnabled ? '0 1px 3px rgba(220, 38, 38, 0.15)' : 'none',
-                transition: 'all 0.15s ease',
-              }}
-              title="Toggle to reveal or hide delete options for grades, species and suppliers"
+              className="delete-toggle-switch"
+              title="Turn on to show delete buttons for grades, species and suppliers"
             >
+              <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
               <input
                 id="settings-delete-mode-toggle"
                 type="checkbox"
                 checked={isDeleteEnabled}
                 onChange={(e) => setIsDeleteEnabled(e.target.checked)}
-                style={{
-                  width: '15px',
-                  height: '15px',
-                  accentColor: '#dc2626',
-                  cursor: 'pointer',
-                }}
               />
-              <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
-              <span>{isDeleteEnabled ? 'Delete Mode: ON' : 'Delete Mode: OFF'}</span>
+              <span className="delete-toggle-slider" />
             </label>
 
             <button
@@ -819,35 +798,6 @@ export function SettingsModal({
                   </button>
                 </div>
 
-                <label
-                  htmlFor="grades-tab-delete-toggle"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    padding: '4px 10px',
-                    borderRadius: '6px',
-                    background: isDeleteEnabled ? '#fef2f2' : '#f8fafc',
-                    border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
-                    color: isDeleteEnabled ? '#991b1b' : '#64748b',
-                    fontSize: '0.78rem',
-                    fontWeight: 600,
-                    userSelect: 'none',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Toggle to reveal or hide delete options for species and grades"
-                >
-                  <input
-                    id="grades-tab-delete-toggle"
-                    type="checkbox"
-                    checked={isDeleteEnabled}
-                    onChange={(e) => setIsDeleteEnabled(e.target.checked)}
-                    style={{ accentColor: '#dc2626', cursor: 'pointer', width: '14px', height: '14px' }}
-                  />
-                  <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
-                  <span>{isDeleteEnabled ? 'Delete Mode Active' : 'Enable Deletions'}</span>
-                </label>
               </div>
 
               {speciesError && <p className="notice notice-error">{speciesError}</p>}
@@ -1402,35 +1352,6 @@ export function SettingsModal({
                   <p className="pane-subtitle">Manage timber growers, forest managers and transport partners</p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <label
-                    htmlFor="suppliers-tab-delete-toggle"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      background: isDeleteEnabled ? '#fef2f2' : '#f8fafc',
-                      border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
-                      color: isDeleteEnabled ? '#991b1b' : '#64748b',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      userSelect: 'none',
-                      transition: 'all 0.15s ease',
-                    }}
-                    title="Toggle to reveal or hide delete button for suppliers"
-                  >
-                    <input
-                      id="suppliers-tab-delete-toggle"
-                      type="checkbox"
-                      checked={isDeleteEnabled}
-                      onChange={(e) => setIsDeleteEnabled(e.target.checked)}
-                      style={{ accentColor: '#dc2626', cursor: 'pointer', width: '14px', height: '14px' }}
-                    />
-                    <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
-                    <span>{isDeleteEnabled ? 'Delete Mode Active' : 'Enable Delete'}</span>
-                  </label>
                   <button
                     type="button"
                     className="primary-button"

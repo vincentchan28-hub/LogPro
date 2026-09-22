@@ -366,6 +366,70 @@ button {
   border-color: #94a3b8;
 }
 
+/* Delete mode toggle switch (Settings modal header) */
+.settings-modal-header .delete-toggle-switch {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.delete-toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.delete-toggle-slider {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  transition: background 0.15s ease;
+}
+
+.delete-toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.delete-toggle-switch input:checked ~ .delete-toggle-slider {
+  background: #dc2626;
+}
+
+.delete-toggle-switch input:checked ~ .delete-toggle-slider::after {
+  transform: translateX(15px);
+}
+
+.delete-toggle-switch:has(input:checked) {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #991b1b;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.15);
+}
+
 /* Settings Navigation Tabs */
 .settings-tabs-bar {
   display: flex;

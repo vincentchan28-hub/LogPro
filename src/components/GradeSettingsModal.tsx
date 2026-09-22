@@ -41,8 +41,8 @@ export function GradeSettingsModal({
   const [newSpeciesName, setNewSpeciesName] = useState('')
   const [newSpeciesNotes, setNewSpeciesNotes] = useState('')
   const [selectedProductType, setSelectedProductType] = useState<
-    'Fresh Logs' | 'Burnt Logs'
-  >('Fresh Logs')
+    'Green Logs' | 'Burnt Logs'
+  >('Green Logs')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
   const [selectedGradeForDetails, setSelectedGradeForDetails] = useState<GradeDefinition | null>(null)
@@ -66,7 +66,7 @@ export function GradeSettingsModal({
   const [editGradeName, setEditGradeName] = useState('')
   const [editGradeSupplierId, setEditGradeSupplierId] = useState('')
   const [editGradeSpeciesName, setEditGradeSpeciesName] = useState('')
-  const [editGradeProductType, setEditGradeProductType] = useState<'Fresh Logs' | 'Burnt Logs'>('Fresh Logs')
+  const [editGradeProductType, setEditGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
   const [editGradeNotes, setEditGradeNotes] = useState('')
   const [isSavingGrade, setIsSavingGrade] = useState(false)
   const [deletingGrade, setDeletingGrade] = useState<GradeDefinition | null>(null)
@@ -265,7 +265,7 @@ export function GradeSettingsModal({
     setEditGradeName(g.GradeName)
     setEditGradeSupplierId(g.SupplierID ? String(g.SupplierID) : '')
     setEditGradeSpeciesName(g.SpeciesName || '')
-    setEditGradeProductType(g.ProductType === 'Burnt Logs' ? 'Burnt Logs' : 'Fresh Logs')
+    setEditGradeProductType(g.ProductType === 'Burnt Logs' ? 'Burnt Logs' : 'Green Logs')
     setEditGradeNotes(g.Notes || '')
     setErrorMsg('')
     setSuccessMsg('')

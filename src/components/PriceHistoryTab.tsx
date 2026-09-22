@@ -835,7 +835,7 @@ export function PriceHistoryTab({
             <span>Product Type:</span>
           </div>
 
-          {['ALL', 'Fresh Logs', 'Burnt Logs'].map((pt) => {
+          {['ALL', 'Green Logs', 'Burnt Logs'].map((pt) => {
             const isSelected = selectedProductTypeFilter === pt
             return (
               <button

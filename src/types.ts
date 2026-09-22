@@ -70,7 +70,7 @@ export type ProcurementGrade = {
   ProcurementGradeID?: number | string
   ProcurementRef: string
   Species: string
-  ProductType: 'Fresh Logs' | 'Burnt Logs' | string
+  ProductType: 'Green Logs' | 'Burnt Logs' | string
   GradeName: string
   OfferedPricePerTonne: number
   AgreedPricePerTonne: number
@@ -93,7 +93,7 @@ export type GradeDefinition = {
   SupplierID?: number | string
   SupplierName?: string
   SpeciesName?: string
-  ProductType: 'Fresh Logs' | 'Burnt Logs' | string
+  ProductType: 'Green Logs' | 'Burnt Logs' | string
   GradeName: string
   IsStandard: boolean
   Notes: string
@@ -138,10 +138,10 @@ export const ACCEPTANCE_METHODS = [
   'Signed Contract',
 ] as const
 
-export const PRODUCT_TYPES = ['Fresh Logs', 'Burnt Logs'] as const
+export const PRODUCT_TYPES = ['Green Logs', 'Burnt Logs'] as const
 
 export const STANDARD_GRADES: Record<string, string[]> = {
-  'Fresh Logs': [
+  'Green Logs': [
     'SA Grade',
     'A Grade',
     'K Grade',

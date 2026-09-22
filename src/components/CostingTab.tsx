@@ -1820,7 +1820,7 @@ export function CostingTab({ workbookPath }: CostingTabProps) {
                   type="text"
                   value={gradeOrSpecies}
                   onChange={(e) => setGradeOrSpecies(e.target.value)}
-                  placeholder="e.g. Radiata Pine - A Grade / Fresh Logs"
+                  placeholder="e.g. Radiata Pine - A Grade / Green Logs"
                   style={{
                     width: '100%',
                     padding: '8px 12px',

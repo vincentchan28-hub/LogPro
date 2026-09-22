@@ -330,7 +330,7 @@ export function readProcurementGrades(
         ProcurementGradeID: (row.ProcurementGradeID as string | number) || idx + 1,
         ProcurementRef: String(row.ProcurementRef || ''),
         Species: String(row.Species || ''),
-        ProductType: String(row.ProductType || 'Fresh Logs'),
+        ProductType: String(row.ProductType || 'Green Logs'),
         GradeName: String(row.GradeName || ''),
         OfferedPricePerTonne: Number(row.OfferedPricePerTonne) || 0,
         AgreedPricePerTonne: Number(row.AgreedPricePerTonne) || 0,
@@ -375,7 +375,7 @@ export function readGradeDefinitions(
       SupplierID: row.SupplierID ? String(row.SupplierID) : '',
       SupplierName: String(row.SupplierName || ''),
       SpeciesName: String(row.SpeciesName || ''),
-      ProductType: (String(row.ProductType || 'Fresh Logs') as 'Fresh Logs' | 'Burnt Logs'),
+      ProductType: (String(row.ProductType || 'Green Logs') as 'Green Logs' | 'Burnt Logs'),
       GradeName: String(row.GradeName || ''),
       IsStandard: Boolean(row.IsStandard === true || row.IsStandard === 'true'),
       Notes: String(row.Notes || ''),
@@ -393,7 +393,7 @@ export function readPriceHistory(
       PriceHistoryID: (row.PriceHistoryID as string | number) || idx + 1,
       ProcurementRef: String(row.ProcurementRef || ''),
       ProcurementGradeID: row.ProcurementGradeID,
-      ProductType: String(row.ProductType || 'Fresh Logs'),
+      ProductType: String(row.ProductType || 'Green Logs'),
       GradeName: String(row.GradeName || ''),
       PreviousPrice: Number(row.PreviousPrice) || 0,
       NewPrice: Number(row.NewPrice) || 0,
@@ -553,7 +553,7 @@ function populateDefaultsIfEmpty(workbook: XLSX.WorkBook): void {
         standardGradeRows.push({
           GradeDefinitionID: defId++,
           SpeciesName: '',
-          ProductType: prodType as 'Fresh Logs' | 'Burnt Logs',
+          ProductType: prodType as 'Green Logs' | 'Burnt Logs',
           GradeName: grade,
           IsStandard: true,
           Notes: 'Standard grade from Log Procurement reference PDF',
@@ -586,7 +586,7 @@ function populateDefaultsIfEmpty(workbook: XLSX.WorkBook): void {
           PriceHistoryID: 1,
           ProcurementRef: p1.ProcurementRef,
           ProcurementGradeID: g1?.ProcurementGradeID || 1,
-          ProductType: g1?.ProductType || 'Fresh Logs',
+          ProductType: g1?.ProductType || 'Green Logs',
           GradeName: g1?.GradeName || 'K Grade',
           PreviousPrice: Math.max(20, (Number(g1?.AgreedPricePerTonne) || 92) - 6.5),
           NewPrice: Number(g1?.AgreedPricePerTonne) || 92,
@@ -604,7 +604,7 @@ function populateDefaultsIfEmpty(workbook: XLSX.WorkBook): void {
           PriceHistoryID: 2,
           ProcurementRef: p1.ProcurementRef,
           ProcurementGradeID: g2?.ProcurementGradeID || 2,
-          ProductType: g2?.ProductType || 'Fresh Logs',
+          ProductType: g2?.ProductType || 'Green Logs',
           GradeName: g2?.GradeName || 'A Grade',
           PreviousPrice: Math.max(20, (Number(g2?.AgreedPricePerTonne) || 105) - 8),
           NewPrice: Number(g2?.AgreedPricePerTonne) || 105,
@@ -1166,7 +1166,7 @@ export const webLogPro = {
           ProcurementGradeID: nextGradeId++,
           ProcurementRef: ref,
           Species: String(g.Species || newProcurement.Species || ''),
-          ProductType: g.ProductType || 'Fresh Logs',
+          ProductType: g.ProductType || 'Green Logs',
           GradeName: String(g.GradeName || ''),
           OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
           AgreedPricePerTonne: Number(g.AgreedPricePerTonne) || 0,
@@ -1278,7 +1278,7 @@ export const webLogPro = {
           ProcurementGradeID: g.ProcurementGradeID || nextGradeId++,
           ProcurementRef: procurementRef,
           Species: String(g.Species || updatedProcurement.Species || ''),
-          ProductType: g.ProductType || 'Fresh Logs',
+          ProductType: g.ProductType || 'Green Logs',
           GradeName: String(g.GradeName || ''),
           OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
           AgreedPricePerTonne: Number(g.AgreedPricePerTonne) || 0,
@@ -1391,7 +1391,7 @@ export const webLogPro = {
         PriceHistoryID: history.length + 1,
         ProcurementRef: String(record.ProcurementRef || '').trim(),
         ProcurementGradeID: record.ProcurementGradeID,
-        ProductType: String(record.ProductType || 'Fresh Logs'),
+        ProductType: String(record.ProductType || 'Green Logs'),
         GradeName: String(record.GradeName || '').trim(),
         PreviousPrice: Number(record.PreviousPrice) || 0,
         NewPrice: Number(record.NewPrice) || 0,
@@ -1480,7 +1480,7 @@ export const webLogPro = {
         grades.push({
           GradeDefinitionID: nextGradeId++,
           SpeciesName: clean,
-          ProductType: prodType as 'Fresh Logs' | 'Burnt Logs',
+          ProductType: prodType as 'Green Logs' | 'Burnt Logs',
           GradeName: grade,
           IsStandard: true,
           Notes: 'Standard grade from Log Procurement reference PDF',
@@ -1581,7 +1581,7 @@ export const webLogPro = {
   async addGrade(
     workbookPath: string,
     speciesName: string,
-    productType: 'Fresh Logs' | 'Burnt Logs',
+    productType: 'Green Logs' | 'Burnt Logs',
     gradeName: string,
     notes = 'User-added grade',
     supplierId?: string | number,
@@ -1633,7 +1633,7 @@ export const webLogPro = {
     data: {
       gradeName: string
       speciesName?: string
-      productType?: 'Fresh Logs' | 'Burnt Logs'
+      productType?: 'Green Logs' | 'Burnt Logs'
       supplierId?: string | number
       supplierName?: string
       notes?: string

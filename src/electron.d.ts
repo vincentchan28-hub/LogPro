@@ -145,7 +145,7 @@ declare global {
       addGrade: (
         workbookPath: string,
         speciesName: string,
-        productType: 'Fresh Logs' | 'Burnt Logs',
+        productType: 'Green Logs' | 'Burnt Logs',
         gradeName: string,
         notes?: string,
         supplierId?: string | number,
@@ -157,7 +157,7 @@ declare global {
         data: {
           gradeName: string
           speciesName?: string
-          productType?: 'Fresh Logs' | 'Burnt Logs'
+          productType?: 'Green Logs' | 'Burnt Logs'
           supplierId?: string | number
           supplierName?: string
           notes?: string
