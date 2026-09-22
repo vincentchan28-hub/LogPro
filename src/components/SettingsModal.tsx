@@ -12,6 +12,10 @@ import {
   Tag,
   Trees,
   FileSpreadsheet,
+  Pencil,
+  Save,
+  Trash2,
+  Filter,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -79,35 +83,229 @@ export function SettingsModal({
   const [hasCopiedLocation, setHasCopiedLocation] = useState(false)
 
   // Species & Grade definition state
+  const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
   const [speciesSubTab, setSpeciesSubTab] = useState<'species' | 'grades'>('species')
   const [newSpeciesName, setNewSpeciesName] = useState('')
   const [newSpeciesNotes, setNewSpeciesNotes] = useState('')
   const [selectedProductType, setSelectedProductType] = useState<'Fresh Logs' | 'Burnt Logs'>('Fresh Logs')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [newGradeName, setNewGradeName] = useState('')
+  const [newGradeSpeciesName, setNewGradeSpeciesName] = useState('')
   const [newGradeNotes, setNewGradeNotes] = useState('')
+  const [newGradeSupplierId, setNewGradeSupplierId] = useState('')
+  const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
+  const [selectedGradeForDetails, setSelectedGradeForDetails] = useState<GradeDefinition | null>(null)
   const [speciesError, setSpeciesError] = useState('')
   const [speciesSuccess, setSpeciesSuccess] = useState('')
   const [isSubmittingSpecies, setIsSubmittingSpecies] = useState(false)
+
+  // Species Edit & Delete state
+  const [editingSpecies, setEditingSpecies] = useState<SpeciesDefinition | null>(null)
+  const [editSpeciesName, setEditSpeciesName] = useState('')
+  const [editSpeciesNotes, setEditSpeciesNotes] = useState('')
+  const [deletingSpecies, setDeletingSpecies] = useState<SpeciesDefinition | null>(null)
+  const [isSavingSpecies, setIsSavingSpecies] = useState(false)
+  const [isDeletingSpecies, setIsDeletingSpecies] = useState(false)
+
+  // Grade Edit & Delete state
+  const [editingGrade, setEditingGrade] = useState<GradeDefinition | null>(null)
+  const [editGradeName, setEditGradeName] = useState('')
+  const [editGradeSupplierId, setEditGradeSupplierId] = useState('')
+  const [editGradeSpeciesName, setEditGradeSpeciesName] = useState('')
+  const [editGradeProductType, setEditGradeProductType] = useState<'Fresh Logs' | 'Burnt Logs'>('Fresh Logs')
+  const [editGradeNotes, setEditGradeNotes] = useState('')
+  const [deletingGrade, setDeletingGrade] = useState<GradeDefinition | null>(null)
+  const [isSavingGrade, setIsSavingGrade] = useState(false)
+  const [isDeletingGrade, setIsDeletingGrade] = useState(false)
+
+  // Supplier Edit state & handlers
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [editSupplierForm, setEditSupplierForm] = useState({
+    name: '',
+    abn: '',
+    address: '',
+    paymentTerms: '',
+    phone: '',
+    email: '',
+    notes: '',
+  })
+  const [supplierEditError, setSupplierEditError] = useState('')
+  const [supplierEditSuccess, setSupplierEditSuccess] = useState('')
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false)
+
+  // Delete mode toggle for Grades and Suppliers tabs
+  const [isDeleteEnabled, setIsDeleteEnabled] = useState(false)
+
+  // Supplier Delete state & handlers
+  const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null)
+  const [isDeletingSupplier, setIsDeletingSupplier] = useState(false)
+  const [supplierDeleteError, setSupplierDeleteError] = useState('')
+
+  function handleStartDeleteSupplier(supplier: Supplier) {
+    setDeletingSupplier(supplier)
+    setSupplierDeleteError('')
+  }
+
+  function handleCancelDeleteSupplier() {
+    setDeletingSupplier(null)
+    setSupplierDeleteError('')
+  }
+
+  async function handleConfirmDeleteSupplier() {
+    if (!deletingSupplier) return
+    const supplierId = deletingSupplier.SupplierID || deletingSupplier.SupplierReference
+    if (!supplierId) return
+
+    setIsDeletingSupplier(true)
+    setSupplierDeleteError('')
+    try {
+      const res = await window.logPro.deleteSupplier(workbookPath, supplierId)
+      if (res.error) {
+        setSupplierDeleteError(res.error)
+      } else {
+        setSupplierEditSuccess(`Supplier "${deletingSupplier.SupplierName}" deleted successfully.`)
+        setDeletingSupplier(null)
+        onRefresh()
+      }
+    } catch (err: any) {
+      setSupplierDeleteError(err?.message || 'Failed to delete supplier.')
+    } finally {
+      setIsDeletingSupplier(false)
+    }
+  }
+
+  function handleStartEditSupplier(supplier: Supplier) {
+    setEditingSupplier(supplier)
+    setEditSupplierForm({
+      name: supplier.SupplierName || '',
+      abn: supplier.ABN || '',
+      address: supplier.Address || '',
+      paymentTerms: supplier.PaymentTerms || '',
+      phone: supplier.Phone || '',
+      email: supplier.Email || '',
+      notes: supplier.Notes || '',
+    })
+    setSupplierEditError('')
+    setSupplierEditSuccess('')
+  }
+
+  function handleCancelEditSupplier() {
+    setEditingSupplier(null)
+    setSupplierEditError('')
+  }
+
+  async function handleSaveSupplierEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editingSupplier) return
+
+    const trimmedName = editSupplierForm.name.trim()
+    if (!trimmedName) {
+      setSupplierEditError('Supplier Name is required.')
+      return
+    }
+
+    const supplierId = editingSupplier.SupplierID || editingSupplier.SupplierReference
+    if (!supplierId) {
+      setSupplierEditError('Invalid supplier identifier.')
+      return
+    }
+
+    setIsSavingSupplier(true)
+    setSupplierEditError('')
+
+    try {
+      const res = await window.logPro.updateSupplier(workbookPath, supplierId, {
+        name: trimmedName,
+        abn: editSupplierForm.abn.trim(),
+        address: editSupplierForm.address.trim(),
+        paymentTerms: editSupplierForm.paymentTerms.trim(),
+        phone: editSupplierForm.phone.trim(),
+        email: editSupplierForm.email.trim(),
+        notes: editSupplierForm.notes.trim(),
+      })
+
+      if (res.error) {
+        setSupplierEditError(res.error)
+      } else {
+        setSupplierEditSuccess(`Supplier "${trimmedName}" updated successfully.`)
+        setEditingSupplier(null)
+        onRefresh()
+      }
+    } catch (err: any) {
+      setSupplierEditError(err?.message || 'Failed to update supplier.')
+    } finally {
+      setIsSavingSupplier(false)
+    }
+  }
 
   // Load species & grades from logPro
   const speciesList: SpeciesDefinition[] = useMemo(() => {
     if (!workbookPath) return []
     try {
+      void speciesGradesVersion
       return window.logPro.getSpecies(workbookPath)
     } catch {
       return []
     }
-  }, [workbookPath, speciesSuccess])
+  }, [workbookPath, speciesGradesVersion])
 
   const gradesList: GradeDefinition[] = useMemo(() => {
     if (!workbookPath) return []
     try {
+      void speciesGradesVersion
       return window.logPro.getGrades(workbookPath)
     } catch {
       return []
     }
-  }, [workbookPath, speciesSuccess])
+  }, [workbookPath, speciesGradesVersion])
+
+  // Active filtered supplier details
+  const activeFilteredSupplier = useMemo(() => {
+    if (!selectedSupplierFilter) return null
+    return (
+      suppliers.find(
+        (s) => String(s.SupplierID || s.SupplierReference) === String(selectedSupplierFilter),
+      ) || null
+    )
+  }, [selectedSupplierFilter, suppliers])
+
+  const filteredGrades = useMemo(() => {
+    return gradesList.filter((g) => {
+      if (g.ProductType !== selectedProductType) return false
+      if (
+        selectedSpeciesForGrade &&
+        g.SpeciesName &&
+        g.SpeciesName.toLowerCase() !== selectedSpeciesForGrade.toLowerCase()
+      ) {
+        return false
+      }
+      if (selectedSupplierFilter) {
+        const matchesId = String(g.SupplierID || '') === String(selectedSupplierFilter)
+        const supplierObj = suppliers.find(
+          (s) => String(s.SupplierID || s.SupplierReference) === String(selectedSupplierFilter),
+        )
+        const matchesName =
+          supplierObj &&
+          g.SupplierName &&
+          g.SupplierName.toLowerCase() === supplierObj.SupplierName.toLowerCase()
+        return Boolean(matchesId || matchesName)
+      }
+      return true
+    })
+  }, [gradesList, selectedProductType, selectedSpeciesForGrade, selectedSupplierFilter, suppliers])
+
+  const activeGradeForDetails = useMemo(() => {
+    if (selectedGradeForDetails) {
+      const found = gradesList.find(
+        (g) => String(g.GradeDefinitionID) === String(selectedGradeForDetails.GradeDefinitionID),
+      )
+      if (found) return found
+    }
+    if (selectedSupplierFilter && filteredGrades.length > 0) {
+      return filteredGrades[0]
+    }
+    return selectedGradeForDetails || null
+  }, [selectedGradeForDetails, selectedSupplierFilter, filteredGrades, gradesList])
 
   // Reports data computed from procurements & grades
   const reportData = useMemo(() => {
@@ -254,10 +452,80 @@ export function SettingsModal({
       setSpeciesSuccess(`Added species "${newSpeciesName}" with standard grades.`)
       setNewSpeciesName('')
       setNewSpeciesNotes('')
+      setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
     }
   }
 
+  function handleStartEditSpecies(sp: SpeciesDefinition) {
+    setEditingSpecies(sp)
+    setEditSpeciesName(sp.SpeciesName)
+    setEditSpeciesNotes(sp.Notes || '')
+    setSpeciesError('')
+    setSpeciesSuccess('')
+  }
+
+  function handleCancelEditSpecies() {
+    setEditingSpecies(null)
+  }
+
+  async function handleSaveSpeciesEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editingSpecies) return
+    const cleanName = editSpeciesName.trim()
+    if (!cleanName) {
+      setSpeciesError('Species name is required.')
+      return
+    }
+
+    setIsSavingSpecies(true)
+    setSpeciesError('')
+    const targetId = editingSpecies.SpeciesDefinitionID || editingSpecies.SpeciesName
+    const res = await window.logPro.updateSpecies(workbookPath, targetId, {
+      speciesName: cleanName,
+      notes: editSpeciesNotes.trim(),
+    })
+    setIsSavingSpecies(false)
+
+    if (res.error) {
+      setSpeciesError(res.error)
+    } else {
+      setSpeciesSuccess(`Species "${cleanName}" updated successfully.`)
+      setEditingSpecies(null)
+      setSpeciesGradesVersion((v) => v + 1)
+      onRefresh()
+    }
+  }
+
+  function handleStartDeleteSpecies(sp: SpeciesDefinition) {
+    setDeletingSpecies(sp)
+    setSpeciesError('')
+    setSpeciesSuccess('')
+  }
+
+  function handleCancelDeleteSpecies() {
+    setDeletingSpecies(null)
+  }
+
+  async function handleConfirmDeleteSpecies() {
+    if (!deletingSpecies) return
+    setIsDeletingSpecies(true)
+    setSpeciesError('')
+    const targetId = deletingSpecies.SpeciesDefinitionID || deletingSpecies.SpeciesName
+    const res = await window.logPro.deleteSpecies(workbookPath, targetId)
+    setIsDeletingSpecies(false)
+
+    if (res.error) {
+      setSpeciesError(res.error)
+    } else {
+      setSpeciesSuccess(`Species "${deletingSpecies.SpeciesName}" deleted.`)
+      setDeletingSpecies(null)
+      setSpeciesGradesVersion((v) => v + 1)
+      onRefresh()
+    }
+  }
+
+  // Grade handlers
   async function handleAddGrade(e: FormEvent) {
     e.preventDefault()
     if (!newGradeName.trim()) {
@@ -268,32 +536,135 @@ export function SettingsModal({
     setSpeciesSuccess('')
     setIsSubmittingSpecies(true)
 
+    const targetSupplierId = newGradeSupplierId || (selectedSupplierFilter || '')
+    const supplierObj = suppliers.find(
+      (s) => String(s.SupplierID || s.SupplierReference) === String(targetSupplierId),
+    )
+    const supplierName = supplierObj ? supplierObj.SupplierName : ''
+    const targetSpecies = newGradeSpeciesName || selectedSpeciesForGrade
+
     const res = await window.logPro.addGrade(
       workbookPath,
-      selectedSpeciesForGrade,
+      targetSpecies,
       selectedProductType,
       newGradeName,
       newGradeNotes || 'User-added grade',
+      targetSupplierId,
+      supplierName,
     )
     setIsSubmittingSpecies(false)
 
     if (res.error) {
       setSpeciesError(res.error)
     } else {
-      setSpeciesSuccess(`Added grade "${newGradeName}" for ${selectedProductType}.`)
+      setSpeciesSuccess(
+        `Added grade "${newGradeName}" for ${selectedProductType}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
+      )
       setNewGradeName('')
       setNewGradeNotes('')
+      setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
     }
   }
 
-  const filteredGrades = gradesList.filter(
-    (g) =>
-      g.ProductType === selectedProductType &&
-      (!selectedSpeciesForGrade ||
-        !g.SpeciesName ||
-        g.SpeciesName === selectedSpeciesForGrade),
-  )
+  function handleStartEditGrade(g: GradeDefinition) {
+    setEditingGrade(g)
+    setEditGradeName(g.GradeName)
+    setEditGradeSupplierId(String(g.SupplierID || ''))
+    setEditGradeSpeciesName(g.SpeciesName || '')
+    setEditGradeProductType((g.ProductType as any) || 'Fresh Logs')
+    setEditGradeNotes(g.Notes || '')
+    setSpeciesError('')
+    setSpeciesSuccess('')
+  }
+
+  function handleCancelEditGrade() {
+    setEditingGrade(null)
+  }
+
+  async function handleSaveGradeEdit(e: FormEvent) {
+    e.preventDefault()
+    if (!editingGrade || !editingGrade.GradeDefinitionID) return
+    const cleanName = editGradeName.trim()
+    if (!cleanName) {
+      setSpeciesError('Grade name is required.')
+      return
+    }
+
+    setIsSavingGrade(true)
+    setSpeciesError('')
+
+    const supplierObj = suppliers.find(
+      (s) => String(s.SupplierID || s.SupplierReference) === String(editGradeSupplierId),
+    )
+    const supplierName = supplierObj ? supplierObj.SupplierName : ''
+
+    const res = await window.logPro.updateGrade(workbookPath, editingGrade.GradeDefinitionID, {
+      gradeName: cleanName,
+      productType: editGradeProductType,
+      speciesName: editGradeSpeciesName.trim(),
+      supplierId: editGradeSupplierId,
+      supplierName: supplierName,
+      notes: editGradeNotes.trim(),
+    })
+    setIsSavingGrade(false)
+
+    if (res.error) {
+      setSpeciesError(res.error)
+    } else {
+      setSpeciesSuccess(`Grade "${cleanName}" updated successfully.`)
+      if (
+        selectedGradeForDetails &&
+        String(selectedGradeForDetails.GradeDefinitionID) === String(editingGrade.GradeDefinitionID)
+      ) {
+        setSelectedGradeForDetails({
+          ...editingGrade,
+          GradeName: cleanName,
+          ProductType: editGradeProductType,
+          SpeciesName: editGradeSpeciesName.trim(),
+          SupplierID: editGradeSupplierId,
+          SupplierName: supplierName,
+          Notes: editGradeNotes.trim(),
+        })
+      }
+      setEditingGrade(null)
+      setSpeciesGradesVersion((v) => v + 1)
+      onRefresh()
+    }
+  }
+
+  function handleStartDeleteGrade(g: GradeDefinition) {
+    setDeletingGrade(g)
+    setSpeciesError('')
+    setSpeciesSuccess('')
+  }
+
+  function handleCancelDeleteGrade() {
+    setDeletingGrade(null)
+  }
+
+  async function handleConfirmDeleteGrade() {
+    if (!deletingGrade || !deletingGrade.GradeDefinitionID) return
+    setIsDeletingGrade(true)
+    setSpeciesError('')
+    const res = await window.logPro.deleteGrade(workbookPath, deletingGrade.GradeDefinitionID)
+    setIsDeletingGrade(false)
+
+    if (res.error) {
+      setSpeciesError(res.error)
+    } else {
+      setSpeciesSuccess(`Grade "${deletingGrade.GradeName}" deleted.`)
+      if (
+        selectedGradeForDetails &&
+        String(selectedGradeForDetails.GradeDefinitionID) === String(deletingGrade.GradeDefinitionID)
+      ) {
+        setSelectedGradeForDetails(null)
+      }
+      setDeletingGrade(null)
+      setSpeciesGradesVersion((v) => v + 1)
+      onRefresh()
+    }
+  }
 
   const savedSize = readSavedSize()
 
@@ -334,17 +705,56 @@ export function SettingsModal({
             <Settings size={22} className="settings-icon-primary" />
             <div>
               <h3>Settings & Tools</h3>
-              <p>Configure species, manage suppliers, view reports and export workbook data</p>
+              <p>Configure grades, manage suppliers, view reports and export workbook data</p>
             </div>
           </div>
-          <button
-            type="button"
-            className="settings-modal-close-btn"
-            onClick={onClose}
-            aria-label="Close settings"
-          >
-            <X size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* Delete Mode Toggle */}
+            <label
+              htmlFor="settings-delete-mode-toggle"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                background: isDeleteEnabled ? '#fee2e2' : '#f8fafc',
+                border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
+                color: isDeleteEnabled ? '#991b1b' : '#475569',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                userSelect: 'none',
+                boxShadow: isDeleteEnabled ? '0 1px 3px rgba(220, 38, 38, 0.15)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Toggle to reveal or hide delete options for grades, species and suppliers"
+            >
+              <input
+                id="settings-delete-mode-toggle"
+                type="checkbox"
+                checked={isDeleteEnabled}
+                onChange={(e) => setIsDeleteEnabled(e.target.checked)}
+                style={{
+                  width: '15px',
+                  height: '15px',
+                  accentColor: '#dc2626',
+                  cursor: 'pointer',
+                }}
+              />
+              <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
+              <span>{isDeleteEnabled ? 'Delete Mode: ON' : 'Delete Mode: OFF'}</span>
+            </label>
+
+            <button
+              type="button"
+              className="settings-modal-close-btn"
+              onClick={onClose}
+              aria-label="Close settings"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -355,7 +765,7 @@ export function SettingsModal({
             onClick={() => setActiveTab('speciesGrades')}
           >
             <Trees size={15} />
-            <span>Species & Grades</span>
+            <span>Grades</span>
           </button>
 
           <button
@@ -388,24 +798,56 @@ export function SettingsModal({
 
         {/* Tab Content Area */}
         <div className="settings-tab-content">
-          {/* TAB 1: SPECIES & GRADES */}
+          {/* TAB 1: GRADES */}
           {activeTab === 'speciesGrades' && (
             <div className="settings-tab-pane">
-              <div className="species-subtab-switch">
-                <button
-                  type="button"
-                  className={`subtab-pill ${speciesSubTab === 'species' ? 'active' : ''}`}
-                  onClick={() => setSpeciesSubTab('species')}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div className="species-subtab-switch" style={{ marginBottom: 0 }}>
+                  <button
+                    type="button"
+                    className={`subtab-pill ${speciesSubTab === 'species' ? 'active' : ''}`}
+                    onClick={() => setSpeciesSubTab('species')}
+                  >
+                    Species ({speciesList.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`subtab-pill ${speciesSubTab === 'grades' ? 'active' : ''}`}
+                    onClick={() => setSpeciesSubTab('grades')}
+                  >
+                    Grades ({gradesList.length})
+                  </button>
+                </div>
+
+                <label
+                  htmlFor="grades-tab-delete-toggle"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: isDeleteEnabled ? '#fef2f2' : '#f8fafc',
+                    border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
+                    color: isDeleteEnabled ? '#991b1b' : '#64748b',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    userSelect: 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Toggle to reveal or hide delete options for species and grades"
                 >
-                  Species ({speciesList.length})
-                </button>
-                <button
-                  type="button"
-                  className={`subtab-pill ${speciesSubTab === 'grades' ? 'active' : ''}`}
-                  onClick={() => setSpeciesSubTab('grades')}
-                >
-                  Grades ({gradesList.length})
-                </button>
+                  <input
+                    id="grades-tab-delete-toggle"
+                    type="checkbox"
+                    checked={isDeleteEnabled}
+                    onChange={(e) => setIsDeleteEnabled(e.target.checked)}
+                    style={{ accentColor: '#dc2626', cursor: 'pointer', width: '14px', height: '14px' }}
+                  />
+                  <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
+                  <span>{isDeleteEnabled ? 'Delete Mode Active' : 'Enable Deletions'}</span>
+                </label>
               </div>
 
               {speciesError && <p className="notice notice-error">{speciesError}</p>}
@@ -454,12 +896,13 @@ export function SettingsModal({
                           <th>Species Name</th>
                           <th>Standard</th>
                           <th>Notes</th>
+                          <th style={{ textAlign: 'center', width: isDeleteEnabled ? '135px' : '75px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {speciesList.length === 0 ? (
                           <tr>
-                            <td colSpan={3} className="text-center muted">
+                            <td colSpan={4} className="text-center muted">
                               No species registered yet.
                             </td>
                           </tr>
@@ -473,6 +916,47 @@ export function SettingsModal({
                                 </span>
                               </td>
                               <td className="muted">{sp.Notes || '—'}</td>
+                              <td style={{ textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() => handleStartEditSpecies(sp)}
+                                    title={`Edit ${sp.SpeciesName}`}
+                                    style={{
+                                      padding: '3px 8px',
+                                      fontSize: '0.78rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}
+                                  >
+                                    <Pencil size={12} />
+                                    <span>Edit</span>
+                                  </button>
+                                  {isDeleteEnabled && (
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      onClick={() => handleStartDeleteSpecies(sp)}
+                                      title={`Delete ${sp.SpeciesName}`}
+                                      style={{
+                                        padding: '3px 8px',
+                                        fontSize: '0.78rem',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        color: '#dc2626',
+                                        borderColor: '#fca5a5',
+                                        background: '#fef2f2',
+                                      }}
+                                    >
+                                      <Trash2 size={12} />
+                                      <span>Delete</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           ))
                         )}
@@ -482,46 +966,292 @@ export function SettingsModal({
                 </div>
               ) : (
                 <div>
-                  <div className="grades-filter-bar">
+                  {/* Top Filter Bar */}
+                  <div
+                    className="grades-filter-bar"
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '12px',
+                      alignItems: 'center',
+                      marginBottom: '12px',
+                    }}
+                  >
                     <div className="product-type-toggle">
                       {PRODUCT_TYPES.map((pt) => (
                         <button
                           key={pt}
                           type="button"
                           className={`pt-pill ${selectedProductType === pt ? 'active' : ''}`}
-                          onClick={() => setSelectedProductType(pt)}
+                          onClick={() => {
+                            setSelectedProductType(pt)
+                            setSelectedGradeForDetails(null)
+                          }}
                         >
                           {pt}
                         </button>
                       ))}
                     </div>
 
-                    <select
-                      value={selectedSpeciesForGrade}
-                      onChange={(e) => setSelectedSpeciesForGrade(e.target.value)}
-                      className="species-dropdown-filter"
-                    >
-                      <option value="">All Species</option>
-                      {speciesList.map((s) => (
-                        <option key={s.SpeciesName} value={s.SpeciesName}>
-                          {s.SpeciesName}
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Trees size={14} className="muted" />
+                      <select
+                        value={selectedSpeciesForGrade}
+                        onChange={(e) => {
+                          setSelectedSpeciesForGrade(e.target.value)
+                          setSelectedGradeForDetails(null)
+                        }}
+                        className="species-dropdown-filter"
+                        aria-label="Filter grades by species"
+                      >
+                        <option value="">All Species</option>
+                        {speciesList.map((s) => (
+                          <option key={s.SpeciesName} value={s.SpeciesName}>
+                            {s.SpeciesName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Supplier Filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Filter size={14} className="muted" />
+                      <select
+                        value={selectedSupplierFilter}
+                        onChange={(e) => {
+                          setSelectedSupplierFilter(e.target.value)
+                          setSelectedGradeForDetails(null)
+                        }}
+                        className="species-dropdown-filter"
+                        style={{ minWidth: '180px' }}
+                        aria-label="Filter grades by supplier"
+                      >
+                        <option value="">All Suppliers</option>
+                        {suppliers.map((s) => (
+                          <option
+                            key={String(s.SupplierID || s.SupplierReference)}
+                            value={String(s.SupplierID || s.SupplierReference)}
+                          >
+                            {s.SupplierName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <form onSubmit={handleAddGrade} className="settings-inline-form">
-                    <div className="form-grid-3">
+                  {/* Supplier & Grade Details Card (when supplier is selected or a grade is clicked) */}
+                  {(selectedSupplierFilter || activeGradeForDetails) && (
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        padding: '14px 16px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      {selectedSupplierFilter && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: activeGradeForDetails ? '12px' : '0',
+                            borderBottom: activeGradeForDetails ? '1px solid #e2e8f0' : 'none',
+                            paddingBottom: activeGradeForDetails ? '10px' : '0',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Building size={16} className="text-primary" />
+                            <div>
+                              <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>
+                                {activeFilteredSupplier?.SupplierName || 'Supplier Grades'}
+                              </strong>
+                              <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: '8px' }}>
+                                ({filteredGrades.length} {filteredGrades.length === 1 ? 'grade' : 'grades'} available)
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => {
+                              setNewGradeSupplierId(selectedSupplierFilter)
+                              const nameInput = document.getElementById('new-grade-name')
+                              if (nameInput) nameInput.focus()
+                            }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '4px 10px',
+                              fontSize: '0.8rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            <Plus size={13} /> Add Grade for {activeFilteredSupplier ? activeFilteredSupplier.SupplierName.split(' ')[0] : 'Supplier'}
+                          </button>
+                        </div>
+                      )}
+
+                      {activeGradeForDetails ? (
+                        <div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: '8px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <Tag size={15} className="text-primary" />
+                              <strong style={{ fontSize: '1rem', color: '#0f172a' }}>
+                                {activeGradeForDetails.GradeName}
+                              </strong>
+                              <span
+                                className={`badge-pill ${activeGradeForDetails.IsStandard ? 'badge-blue' : 'badge-amber'}`}
+                              >
+                                {activeGradeForDetails.IsStandard ? 'PDF Standard' : 'Custom Grade'}
+                              </span>
+                              <span className="badge-pill badge-emerald">
+                                {activeGradeForDetails.ProductType}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => handleStartEditGrade(activeGradeForDetails)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 9px',
+                                  fontSize: '0.78rem',
+                                }}
+                              >
+                                <Pencil size={12} /> Edit Grade
+                              </button>
+                              {isDeleteEnabled && (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => handleStartDeleteGrade(activeGradeForDetails)}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 9px',
+                                    fontSize: '0.78rem',
+                                    color: '#dc2626',
+                                    borderColor: '#fca5a5',
+                                    background: '#fef2f2',
+                                  }}
+                                >
+                                  <Trash2 size={12} /> Delete
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                              gap: '10px',
+                              fontSize: '0.83rem',
+                              background: '#ffffff',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <div>
+                              <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>
+                                Supplier Source
+                              </span>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                {activeGradeForDetails.SupplierName || 'Universal / All Suppliers'}
+                              </span>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>
+                                Target Species
+                              </span>
+                              <span style={{ fontWeight: 600, color: '#1e293b' }}>
+                                {activeGradeForDetails.SpeciesName || 'All Species (Universal)'}
+                              </span>
+                            </div>
+                            <div style={{ gridColumn: 'span 2' }}>
+                              <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem', fontWeight: 600 }}>
+                                Specifications & Dimensions
+                              </span>
+                              <span style={{ color: '#334155' }}>
+                                {activeGradeForDetails.Notes || 'No specific dimension or defect constraints recorded.'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+                          No grades currently registered specifically for this supplier. You can use the form below to register supplier-specific grades.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Add Grade Form */}
+                  <form onSubmit={handleAddGrade} className="settings-inline-form" style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr auto', gap: '8px', alignItems: 'end' }}>
                       <div>
-                        <label htmlFor="new-grade-name">New Grade Name *</label>
+                        <label htmlFor="new-grade-name">Grade Name *</label>
                         <input
                           id="new-grade-name"
                           type="text"
-                          placeholder="e.g. Export A, Super Peel"
+                          placeholder="e.g. Export A, Peeler"
                           value={newGradeName}
                           onChange={(e) => setNewGradeName(e.target.value)}
                         />
                       </div>
+
+                      <div>
+                        <label htmlFor="new-grade-supplier">Supplier</label>
+                        <select
+                          id="new-grade-supplier"
+                          value={newGradeSupplierId || (selectedSupplierFilter || '')}
+                          onChange={(e) => setNewGradeSupplierId(e.target.value)}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">All Suppliers (General)</option>
+                          {suppliers.map((s) => (
+                            <option
+                              key={String(s.SupplierID || s.SupplierReference)}
+                              value={String(s.SupplierID || s.SupplierReference)}
+                            >
+                              {s.SupplierName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="new-grade-species">Species</label>
+                        <select
+                          id="new-grade-species"
+                          value={newGradeSpeciesName || selectedSpeciesForGrade}
+                          onChange={(e) => setNewGradeSpeciesName(e.target.value)}
+                          style={{ width: '100%' }}
+                        >
+                          <option value="">All Species</option>
+                          {speciesList.map((s) => (
+                            <option key={s.SpeciesName} value={s.SpeciesName}>
+                              {s.SpeciesName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       <div>
                         <label htmlFor="new-grade-notes">Description / Spec</label>
                         <input
@@ -532,11 +1262,13 @@ export function SettingsModal({
                           onChange={(e) => setNewGradeNotes(e.target.value)}
                         />
                       </div>
+
                       <div className="form-submit-cell">
                         <button
                           type="submit"
                           className="primary-button"
                           disabled={isSubmittingSpecies}
+                          style={{ whiteSpace: 'nowrap' }}
                         >
                           <Plus size={15} /> Add Grade
                         </button>
@@ -544,41 +1276,114 @@ export function SettingsModal({
                     </div>
                   </form>
 
+                  {/* Grades Table */}
                   <div className="settings-table-wrapper">
                     <table className="settings-table">
                       <thead>
                         <tr>
                           <th>Grade Name</th>
+                          <th>Supplier</th>
                           <th>Product Type</th>
                           <th>Species</th>
                           <th>Standard</th>
+                          <th>Specs / Notes</th>
+                          <th style={{ textAlign: 'center', width: isDeleteEnabled ? '100px' : '65px' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredGrades.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="text-center muted">
+                            <td colSpan={7} className="text-center muted">
                               No grades found for this filter.
                             </td>
                           </tr>
                         ) : (
-                          filteredGrades.map((g, idx) => (
-                            <tr key={String(g.GradeDefinitionID || idx)}>
-                              <td className="font-semibold">
-                                <span className="cell-flex">
-                                  <Tag size={13} className="text-primary" />
-                                  {g.GradeName}
-                                </span>
-                              </td>
-                              <td>{g.ProductType}</td>
-                              <td className="muted">{g.SpeciesName || 'All Species'}</td>
-                              <td>
-                                <span className={`badge-pill ${g.IsStandard ? 'badge-blue' : 'badge-amber'}`}>
-                                  {g.IsStandard ? 'PDF Standard' : 'Custom'}
-                                </span>
-                              </td>
-                            </tr>
-                          ))
+                          filteredGrades.map((g, idx) => {
+                            const isSelected =
+                              activeGradeForDetails &&
+                              String(activeGradeForDetails.GradeDefinitionID) ===
+                                String(g.GradeDefinitionID)
+                            return (
+                              <tr
+                                key={String(g.GradeDefinitionID || idx)}
+                                onClick={() => setSelectedGradeForDetails(g)}
+                                style={{
+                                  cursor: 'pointer',
+                                  background: isSelected ? '#eff6ff' : undefined,
+                                }}
+                                title="Click to view full grade details"
+                              >
+                                <td className="font-semibold">
+                                  <span className="cell-flex">
+                                    <Tag size={13} className="text-primary" />
+                                    {g.GradeName}
+                                  </span>
+                                </td>
+                                <td>
+                                  {g.SupplierName ? (
+                                    <span
+                                      className="badge-pill badge-blue"
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Building size={11} /> {g.SupplierName}
+                                    </span>
+                                  ) : (
+                                    <span className="muted" style={{ fontSize: '0.8rem' }}>Universal</span>
+                                  )}
+                                </td>
+                                <td>{g.ProductType}</td>
+                                <td className="muted">{g.SpeciesName || 'All Species'}</td>
+                                <td>
+                                  <span
+                                    className={`badge-pill ${g.IsStandard ? 'badge-blue' : 'badge-amber'}`}
+                                  >
+                                    {g.IsStandard ? 'PDF Standard' : 'Custom'}
+                                  </span>
+                                </td>
+                                <td
+                                  className="muted"
+                                  style={{
+                                    maxWidth: '180px',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {g.Notes || '—'}
+                                </td>
+                                <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                  <div style={{ display: 'inline-flex', gap: '4px' }}>
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      onClick={() => handleStartEditGrade(g)}
+                                      title={`Edit ${g.GradeName}`}
+                                      style={{ padding: '3px 7px', fontSize: '0.78rem' }}
+                                    >
+                                      <Pencil size={12} />
+                                    </button>
+                                    {isDeleteEnabled && (
+                                      <button
+                                        type="button"
+                                        className="secondary-button"
+                                        onClick={() => handleStartDeleteGrade(g)}
+                                        title={`Delete ${g.GradeName}`}
+                                        style={{
+                                          padding: '3px 7px',
+                                          fontSize: '0.78rem',
+                                          color: '#dc2626',
+                                          borderColor: '#fca5a5',
+                                          background: '#fef2f2',
+                                        }}
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })
                         )}
                       </tbody>
                     </table>
@@ -596,16 +1401,75 @@ export function SettingsModal({
                   <h4 className="pane-title">Suppliers Register</h4>
                   <p className="pane-subtitle">Manage timber growers, forest managers and transport partners</p>
                 </div>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => {
-                    onOpenAddSupplier()
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label
+                    htmlFor="suppliers-tab-delete-toggle"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      background: isDeleteEnabled ? '#fef2f2' : '#f8fafc',
+                      border: `1px solid ${isDeleteEnabled ? '#f87171' : '#cbd5e1'}`,
+                      color: isDeleteEnabled ? '#991b1b' : '#64748b',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      userSelect: 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Toggle to reveal or hide delete button for suppliers"
+                  >
+                    <input
+                      id="suppliers-tab-delete-toggle"
+                      type="checkbox"
+                      checked={isDeleteEnabled}
+                      onChange={(e) => setIsDeleteEnabled(e.target.checked)}
+                      style={{ accentColor: '#dc2626', cursor: 'pointer', width: '14px', height: '14px' }}
+                    />
+                    <Trash2 size={13} color={isDeleteEnabled ? '#dc2626' : '#64748b'} />
+                    <span>{isDeleteEnabled ? 'Delete Mode Active' : 'Enable Delete'}</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => {
+                      onOpenAddSupplier()
+                    }}
+                  >
+                    <Plus size={15} /> Add Supplier
+                  </button>
+                </div>
+              </div>
+
+              {supplierEditSuccess && (
+                <div
+                  className="success-message"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    margin: '0 0 12px',
                   }}
                 >
-                  <Plus size={15} /> Add Supplier
-                </button>
-              </div>
+                  <span>{supplierEditSuccess}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSupplierEditSuccess('')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                      padding: '2px',
+                    }}
+                    aria-label="Dismiss success notice"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
 
               {suppliers.length === 0 ? (
                 <div className="empty-panel">
@@ -625,6 +1489,7 @@ export function SettingsModal({
                         <th>Payment Terms</th>
                         <th>Phone</th>
                         <th>Email</th>
+                        <th style={{ textAlign: 'center', width: isDeleteEnabled ? '145px' : '90px' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -639,6 +1504,51 @@ export function SettingsModal({
                           <td>{s.PaymentTerms || '—'}</td>
                           <td>{s.Phone || '—'}</td>
                           <td>{s.Email || '—'}</td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => handleStartEditSupplier(s)}
+                                title={`Edit ${s.SupplierName}`}
+                                aria-label={`Edit ${s.SupplierName}`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '4px 10px',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <Pencil size={13} />
+                                <span>Edit</span>
+                              </button>
+                              {isDeleteEnabled && (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => handleStartDeleteSupplier(s)}
+                                  title={`Delete ${s.SupplierName}`}
+                                  aria-label={`Delete ${s.SupplierName}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 10px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    color: '#dc2626',
+                                    borderColor: '#fca5a5',
+                                    background: '#fef2f2',
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                  <span>Delete</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -833,6 +1743,723 @@ export function SettingsModal({
             Close
           </button>
         </div>
+
+        {/* EDIT SUPPLIER SUB-MODAL */}
+        {editingSupplier && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isSavingSupplier) {
+                handleCancelEditSupplier()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-supplier-modal-title"
+              style={{ width: 'min(100%, 620px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  marginBottom: '16px',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '12px',
+                }}
+              >
+                <div>
+                  <h3
+                    id="edit-supplier-modal-title"
+                    style={{ margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 700, color: '#0f172a' }}
+                  >
+                    Edit Supplier
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#64748b' }}>
+                    <span>Reference:</span>
+                    <span className="badge-pill badge-blue" style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>
+                      {editingSupplier.SupplierReference || editingSupplier.SupplierID}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelEditSupplier}
+                  disabled={isSavingSupplier}
+                  aria-label="Close edit form"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    borderRadius: '6px',
+                  }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {supplierEditError && (
+                <div className="error-message" style={{ marginBottom: '14px' }}>
+                  {supplierEditError}
+                </div>
+              )}
+
+              <form onSubmit={handleSaveSupplierEdit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label htmlFor="edit-supplier-name" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Supplier Name *
+                    </label>
+                    <input
+                      id="edit-supplier-name"
+                      type="text"
+                      required
+                      value={editSupplierForm.name}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, name: e.target.value })}
+                      placeholder="e.g. Hancock Victorian Plantations"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-supplier-abn" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      ABN
+                    </label>
+                    <input
+                      id="edit-supplier-abn"
+                      type="text"
+                      value={editSupplierForm.abn}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, abn: e.target.value })}
+                      placeholder="e.g. 12 345 678 901"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label htmlFor="edit-supplier-address" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Physical / Depot Address
+                    </label>
+                    <input
+                      id="edit-supplier-address"
+                      type="text"
+                      value={editSupplierForm.address}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, address: e.target.value })}
+                      placeholder="e.g. 120 Plantation Rd, Traralgon VIC"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-supplier-payment-terms" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Payment Terms
+                    </label>
+                    <input
+                      id="edit-supplier-payment-terms"
+                      type="text"
+                      value={editSupplierForm.paymentTerms}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, paymentTerms: e.target.value })}
+                      placeholder="e.g. 14 Days EOM / 30 Days Net"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label htmlFor="edit-supplier-phone" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Phone
+                    </label>
+                    <input
+                      id="edit-supplier-phone"
+                      type="text"
+                      value={editSupplierForm.phone}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, phone: e.target.value })}
+                      placeholder="e.g. 03 5174 1234"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-supplier-email" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Email
+                    </label>
+                    <input
+                      id="edit-supplier-email"
+                      type="email"
+                      value={editSupplierForm.email}
+                      onChange={(e) => setEditSupplierForm({ ...editSupplierForm, email: e.target.value })}
+                      placeholder="e.g. accounts@supplier.com.au"
+                      disabled={isSavingSupplier}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-supplier-notes" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Notes
+                  </label>
+                  <textarea
+                    id="edit-supplier-notes"
+                    rows={3}
+                    value={editSupplierForm.notes}
+                    onChange={(e) => setEditSupplierForm({ ...editSupplierForm, notes: e.target.value })}
+                    placeholder="Log delivery instructions, FSC certification details, site access rules..."
+                    disabled={isSavingSupplier}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: '10px',
+                    marginTop: '8px',
+                    paddingTop: '14px',
+                    borderTop: '1px solid #e2e8f0',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCancelEditSupplier}
+                    disabled={isSavingSupplier}
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-button"
+                    disabled={isSavingSupplier}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px' }}
+                  >
+                    <Save size={15} />
+                    {isSavingSupplier ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {/* EDIT SPECIES SUB-MODAL */}
+        {editingSpecies && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isSavingSpecies) {
+                handleCancelEditSpecies()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-species-title"
+              style={{ width: 'min(100%, 520px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '16px',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '12px',
+                }}
+              >
+                <div>
+                  <h3 id="edit-species-title" style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+                    Edit Species
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+                    Updating this species will cascade to all associated grade definitions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelEditSpecies}
+                  disabled={isSavingSpecies}
+                  aria-label="Close form"
+                  style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSpeciesEdit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label htmlFor="edit-species-name" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Species Name *
+                  </label>
+                  <input
+                    id="edit-species-name"
+                    type="text"
+                    required
+                    value={editSpeciesName}
+                    onChange={(e) => setEditSpeciesName(e.target.value)}
+                    placeholder="e.g. Radiata Pine"
+                    disabled={isSavingSpecies}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-species-notes" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Notes / Botanical Info
+                  </label>
+                  <input
+                    id="edit-species-notes"
+                    type="text"
+                    value={editSpeciesNotes}
+                    onChange={(e) => setEditSpeciesNotes(e.target.value)}
+                    placeholder="e.g. Pinus radiata, softwood"
+                    disabled={isSavingSpecies}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: '10px',
+                    marginTop: '8px',
+                    paddingTop: '14px',
+                    borderTop: '1px solid #e2e8f0',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCancelEditSpecies}
+                    disabled={isSavingSpecies}
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-button"
+                    disabled={isSavingSpecies}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px' }}
+                  >
+                    <Save size={15} />
+                    {isSavingSpecies ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {/* DELETE SPECIES CONFIRMATION SUB-MODAL */}
+        {deletingSpecies && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isDeletingSpecies) {
+                handleCancelDeleteSpecies()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-species-title"
+              style={{ width: 'min(100%, 480px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id="delete-species-title" style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 700, color: '#991b1b' }}>
+                Delete Species
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to delete <strong>{deletingSpecies.SpeciesName}</strong>?
+                This species definition will be removed from your workbook database.
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  paddingTop: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleCancelDeleteSpecies}
+                  disabled={isDeletingSpecies}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmDeleteSpecies}
+                  disabled={isDeletingSpecies}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#dc2626',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  {isDeletingSpecies ? 'Deleting…' : 'Delete Species'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* EDIT GRADE SUB-MODAL */}
+        {editingGrade && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isSavingGrade) {
+                handleCancelEditGrade()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="edit-grade-title"
+              style={{ width: 'min(100%, 560px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '16px',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '12px',
+                }}
+              >
+                <div>
+                  <h3 id="edit-grade-title" style={{ margin: '0 0 4px', fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+                    Edit Grade Definition
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+                    Update grade specifications, linked supplier, or target species.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelEditGrade}
+                  disabled={isSavingGrade}
+                  aria-label="Close form"
+                  style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveGradeEdit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label htmlFor="edit-grade-name" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Grade Name *
+                    </label>
+                    <input
+                      id="edit-grade-name"
+                      type="text"
+                      required
+                      value={editGradeName}
+                      onChange={(e) => setEditGradeName(e.target.value)}
+                      placeholder="e.g. Export Grade A"
+                      disabled={isSavingGrade}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="edit-grade-prodtype" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Product Type
+                    </label>
+                    <select
+                      id="edit-grade-prodtype"
+                      value={editGradeProductType}
+                      onChange={(e) => setEditGradeProductType(e.target.value as any)}
+                      disabled={isSavingGrade}
+                      style={{ width: '100%' }}
+                    >
+                      {PRODUCT_TYPES.map((pt) => (
+                        <option key={pt} value={pt}>
+                          {pt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label htmlFor="edit-grade-supplier" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Linked Supplier
+                    </label>
+                    <select
+                      id="edit-grade-supplier"
+                      value={editGradeSupplierId}
+                      onChange={(e) => setEditGradeSupplierId(e.target.value)}
+                      disabled={isSavingGrade}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">All Suppliers (General/Universal)</option>
+                      {suppliers.map((s) => (
+                        <option
+                          key={String(s.SupplierID || s.SupplierReference)}
+                          value={String(s.SupplierID || s.SupplierReference)}
+                        >
+                          {s.SupplierName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="edit-grade-species" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                      Target Species
+                    </label>
+                    <select
+                      id="edit-grade-species"
+                      value={editGradeSpeciesName}
+                      onChange={(e) => setEditGradeSpeciesName(e.target.value)}
+                      disabled={isSavingGrade}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="">All Species (Universal)</option>
+                      {speciesList.map((s) => (
+                        <option key={s.SpeciesName} value={s.SpeciesName}>
+                          {s.SpeciesName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-grade-notes" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                    Specifications / Dimension / Defect Notes
+                  </label>
+                  <textarea
+                    id="edit-grade-notes"
+                    rows={3}
+                    value={editGradeNotes}
+                    onChange={(e) => setEditGradeNotes(e.target.value)}
+                    placeholder="e.g. SED 30cm+, Max knot 6cm, sweep < 15mm..."
+                    disabled={isSavingGrade}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: '10px',
+                    marginTop: '8px',
+                    paddingTop: '14px',
+                    borderTop: '1px solid #e2e8f0',
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={handleCancelEditGrade}
+                    disabled={isSavingGrade}
+                    style={{ padding: '8px 16px' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-button"
+                    disabled={isSavingGrade}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px' }}
+                  >
+                    <Save size={15} />
+                    {isSavingGrade ? 'Saving…' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {/* DELETE GRADE CONFIRMATION SUB-MODAL */}
+        {deletingGrade && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isDeletingGrade) {
+                handleCancelDeleteGrade()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-grade-title"
+              style={{ width: 'min(100%, 480px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id="delete-grade-title" style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 700, color: '#991b1b' }}>
+                Delete Grade
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to delete grade <strong>{deletingGrade.GradeName}</strong> ({deletingGrade.ProductType})?
+                This grade definition will be removed from your workbook database.
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  paddingTop: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleCancelDeleteGrade}
+                  disabled={isDeletingGrade}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmDeleteGrade}
+                  disabled={isDeletingGrade}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#dc2626',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  {isDeletingGrade ? 'Deleting…' : 'Delete Grade'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* DELETE SUPPLIER CONFIRMATION SUB-MODAL */}
+        {deletingSupplier && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isDeletingSupplier) {
+                handleCancelDeleteSupplier()
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-supplier-title"
+              style={{ width: 'min(100%, 480px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id="delete-supplier-title" style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 700, color: '#991b1b' }}>
+                Delete Supplier
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to delete supplier <strong>{deletingSupplier.SupplierName}</strong> (Ref: {deletingSupplier.SupplierReference || deletingSupplier.SupplierID})?
+                This will remove the supplier from your workbook database register.
+              </p>
+              {supplierDeleteError && (
+                <p className="notice notice-error" style={{ marginBottom: '14px' }}>
+                  {supplierDeleteError}
+                </p>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  paddingTop: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleCancelDeleteSupplier}
+                  disabled={isDeletingSupplier}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmDeleteSupplier}
+                  disabled={isDeletingSupplier}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#dc2626',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  {isDeletingSupplier ? 'Deleting…' : 'Delete Supplier'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
       </section>
     </div>
   )

@@ -90,6 +90,8 @@ export type SpeciesDefinition = {
 
 export type GradeDefinition = {
   GradeDefinitionID?: number | string
+  SupplierID?: number | string
+  SupplierName?: string
   SpeciesName?: string
   ProductType: 'Fresh Logs' | 'Burnt Logs' | string
   GradeName: string

@@ -284,15 +284,29 @@ export function ProcurementsTab({
   function getGradesFor(
     speciesName?: string,
     productType?: 'Fresh Logs' | 'Burnt Logs',
+    customSupplierId?: string | number,
   ): string[] {
     const pt = productType || 'Fresh Logs'
-    // Gather from database grade definitions
+    const targetSuppId =
+      customSupplierId !== undefined
+        ? String(customSupplierId).trim()
+        : supplierId
+        ? String(supplierId).trim()
+        : ''
+
+    // Gather from database grade definitions:
+    // Match product type AND
+    // Match species (or definition is universal across species) AND
+    // Match supplier (or definition is universal across all suppliers)
     const custom = gradesList
-      .filter(
-        (g) =>
-          g.ProductType === pt &&
-          (!g.SpeciesName || !speciesName || g.SpeciesName === speciesName),
-      )
+      .filter((g) => {
+        if (g.ProductType !== pt) return false
+        if (g.SpeciesName && speciesName && g.SpeciesName !== speciesName) return false
+        if (g.SupplierID && targetSuppId && String(g.SupplierID).trim() !== targetSuppId) {
+          return false
+        }
+        return true
+      })
       .map((g) => g.GradeName)
 
     // Standard fallback
@@ -2396,6 +2410,7 @@ export function ProcurementsTab({
         workbookPath={workbookPath}
         speciesList={speciesList}
         gradesList={gradesList}
+        suppliers={suppliers}
         onRefresh={loadData}
       />
 

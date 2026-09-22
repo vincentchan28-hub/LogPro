@@ -14,7 +14,7 @@ import { HomeOverview } from './components/HomeOverview'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
 import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
-import { Building, Plus, Trees, Settings as SettingsIcon } from 'lucide-react'
+import { Building, Plus, Trees, Settings as SettingsIcon, Pencil } from 'lucide-react'
 import './App.css'
 
 type SupplierForm = {
@@ -93,6 +93,7 @@ function App() {
   const [grades, setGrades] = useState<ProcurementGrade[]>([])
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([])
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false)
+  const [editingSupplierId, setEditingSupplierId] = useState<string | number | null>(null)
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm)
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -169,14 +170,29 @@ function App() {
     })
   }
 
-  function openSupplierForm() {
-    setSupplierForm(emptySupplierForm)
+  function openSupplierForm(supplier?: Supplier) {
+    if (supplier) {
+      setEditingSupplierId(supplier.SupplierID || supplier.SupplierReference || null)
+      setSupplierForm({
+        name: supplier.SupplierName || '',
+        abn: supplier.ABN || '',
+        address: supplier.Address || '',
+        paymentTerms: supplier.PaymentTerms || '',
+        phone: supplier.Phone || '',
+        email: supplier.Email || '',
+        notes: supplier.Notes || '',
+      })
+    } else {
+      setEditingSupplierId(null)
+      setSupplierForm(emptySupplierForm)
+    }
     setSupplierError('')
     setIsSupplierFormOpen(true)
   }
 
   function closeSupplierForm() {
     setIsSupplierFormOpen(false)
+    setEditingSupplierId(null)
     setSupplierForm(emptySupplierForm)
     setSupplierError('')
   }
@@ -191,10 +207,16 @@ function App() {
     setSupplierError('')
 
     try {
-      const result = await window.logPro.saveSupplier(
-        selectedWorkbook,
-        supplierForm,
-      )
+      const result = editingSupplierId
+        ? await window.logPro.updateSupplier(
+            selectedWorkbook,
+            editingSupplierId,
+            supplierForm,
+          )
+        : await window.logPro.saveSupplier(
+            selectedWorkbook,
+            supplierForm,
+          )
 
       if (result.error) {
         setSupplierError(result.error)
@@ -224,7 +246,7 @@ function App() {
 
           <button
             type="button"
-            onClick={openSupplierForm}
+            onClick={() => openSupplierForm()}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <Plus size={16} /> Add Supplier
@@ -248,6 +270,7 @@ function App() {
                   <th>Payment Terms</th>
                   <th>Phone</th>
                   <th>Email</th>
+                  <th style={{ textAlign: 'center', width: '90px' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,6 +285,25 @@ function App() {
                     <td>{supplier.PaymentTerms || '—'}</td>
                     <td>{supplier.Phone || '—'}</td>
                     <td>{supplier.Email || '—'}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => openSupplierForm(supplier)}
+                        title={`Edit ${supplier.SupplierName}`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '4px 8px',
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <Pencil size={13} />
+                        <span>Edit</span>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -419,7 +461,7 @@ function App() {
           onClose={() => setIsSettingsOpen(false)}
           workbookPath={selectedWorkbook}
           suppliers={suppliers}
-          onOpenAddSupplier={openSupplierForm}
+          onOpenAddSupplier={() => openSupplierForm()}
           onRefresh={refreshWorkbookData}
         />
 
@@ -433,7 +475,7 @@ function App() {
               style={{ width: 'min(100%, 640px)' }}
             >
               <h2 id="supplier-form-title" style={{ margin: '0 0 16px' }}>
-                Add Supplier
+                {editingSupplierId ? 'Edit Supplier' : 'Add Supplier'}
               </h2>
 
               <form onSubmit={handleSaveSupplier}>
@@ -560,7 +602,7 @@ function App() {
                   </button>
 
                   <button type="submit" disabled={isSaving}>
-                    {isSaving ? 'Saving…' : 'Save Supplier'}
+                    {isSaving ? 'Saving…' : (editingSupplierId ? 'Save Changes' : 'Save Supplier')}
                   </button>
                 </div>
               </form>

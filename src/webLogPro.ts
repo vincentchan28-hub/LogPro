@@ -45,10 +45,13 @@ export const WORKBOOK_SHEETS = [
 export const HEADERS: Record<string, string[]> = {
   Suppliers: [
     'SupplierID',
+    'SupplierReference',
     'SupplierName',
     'Address',
     'ABN',
     'PaymentTerms',
+    'Phone',
+    'Email',
     'Notes',
     'CreatedBy',
     'CreatedDate',
@@ -169,6 +172,8 @@ export const HEADERS: Record<string, string[]> = {
   SpeciesDefinitions: ['SpeciesDefinitionID', 'SpeciesName', 'IsStandard', 'Notes'],
   GradeDefinitions: [
     'GradeDefinitionID',
+    'SupplierID',
+    'SupplierName',
     'SpeciesName',
     'ProductType',
     'GradeName',
@@ -367,6 +372,8 @@ export function readGradeDefinitions(
   return rawRows
     .map((row, idx): GradeDefinition => ({
       GradeDefinitionID: (row.GradeDefinitionID as string | number) || idx + 1,
+      SupplierID: row.SupplierID ? String(row.SupplierID) : '',
+      SupplierName: String(row.SupplierName || ''),
       SpeciesName: String(row.SpeciesName || ''),
       ProductType: (String(row.ProductType || 'Fresh Logs') as 'Fresh Logs' | 'Burnt Logs'),
       GradeName: String(row.GradeName || ''),
@@ -898,6 +905,133 @@ export const webLogPro = {
     }
   },
 
+  async updateSupplier(
+    workbookPath: string,
+    supplierId: string | number,
+    supplierInput: Partial<SupplierInput> & {
+      SupplierName?: string
+      Address?: string
+      ABN?: string
+      PaymentTerms?: string
+      Phone?: string
+      Email?: string
+      Notes?: string
+    },
+  ): Promise<{ suppliers: Supplier[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) {
+      return { suppliers: [], error: 'No workbook is currently open.' }
+    }
+
+    try {
+      const suppliers = readSuppliers(workbook)
+      const targetId = String(supplierId).trim()
+      const index = suppliers.findIndex(
+        (s) =>
+          String(s.SupplierID).trim() === targetId ||
+          String(s.SupplierReference).trim() === targetId,
+      )
+
+      if (index === -1) {
+        return { suppliers, error: `Supplier "${supplierId}" not found.` }
+      }
+
+      const existing = suppliers[index]
+      const updatedName = (
+        supplierInput.SupplierName ??
+        supplierInput.name ??
+        existing.SupplierName
+      ).trim()
+
+      if (!updatedName) {
+        return { suppliers, error: 'Supplier name cannot be empty.' }
+      }
+
+      const updatedSupplier: Supplier = {
+        ...existing,
+        SupplierName: updatedName,
+        Address: (
+          supplierInput.Address ??
+          supplierInput.address ??
+          existing.Address ??
+          ''
+        ).trim(),
+        ABN: (
+          supplierInput.ABN ??
+          supplierInput.abn ??
+          existing.ABN ??
+          ''
+        ).trim(),
+        PaymentTerms: (
+          supplierInput.PaymentTerms ??
+          supplierInput.paymentTerms ??
+          existing.PaymentTerms ??
+          ''
+        ).trim(),
+        Phone: (
+          supplierInput.Phone ??
+          supplierInput.phone ??
+          existing.Phone ??
+          ''
+        ).trim(),
+        Email: (
+          supplierInput.Email ??
+          supplierInput.email ??
+          existing.Email ??
+          ''
+        ).trim(),
+        Notes: (
+          supplierInput.Notes ??
+          supplierInput.notes ??
+          existing.Notes ??
+          ''
+        ).trim(),
+        ChangedBy: 'Current User',
+        ChangedDate: formatTimestamp(),
+      }
+
+      suppliers[index] = updatedSupplier
+      setRows(workbook, 'Suppliers', HEADERS.Suppliers, suppliers as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+
+      return { suppliers, error: '' }
+    } catch (e: any) {
+      return { suppliers: [], error: e?.message || String(e) }
+    }
+  },
+
+  async deleteSupplier(
+    workbookPath: string,
+    supplierId: string | number,
+  ): Promise<{ suppliers: Supplier[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) {
+      return { suppliers: [], error: 'No workbook is open.' }
+    }
+
+    try {
+      const suppliers = readSuppliers(workbook)
+      const targetIdStr = String(supplierId).trim()
+      const index = suppliers.findIndex(
+        (s) =>
+          String(s.SupplierID).trim() === targetIdStr ||
+          String(s.SupplierReference).trim() === targetIdStr,
+      )
+
+      if (index === -1) {
+        return { suppliers, error: `Supplier with ID ${supplierId} not found.` }
+      }
+
+      suppliers.splice(index, 1)
+      setRows(workbook, 'Suppliers', HEADERS.Suppliers, suppliers as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+
+      return { suppliers, error: '' }
+    } catch (e: any) {
+      return { suppliers: [], error: e?.message || String(e) }
+    }
+  },
+
   async saveSupplierContact(
     workbookPath: string,
     contactInput: Partial<SupplierContact>,
@@ -1327,8 +1461,9 @@ export const webLogPro = {
       return { species, error: 'Species already exists.' }
     }
 
+    const nextId = species.reduce((max, s) => Math.max(max, Number(s.SpeciesDefinitionID) || 0), 0) + 1
     const newSpecies: SpeciesDefinition = {
-      SpeciesDefinitionID: species.length + 1,
+      SpeciesDefinitionID: nextId,
       SpeciesName: clean,
       IsStandard: false,
       Notes: notes,
@@ -1339,7 +1474,7 @@ export const webLogPro = {
 
     // Also populate standard grades for this species
     const grades = readGradeDefinitions(workbook)
-    let nextGradeId = grades.length + 1
+    let nextGradeId = grades.reduce((max, g) => Math.max(max, Number(g.GradeDefinitionID) || 0), 0) + 1
     for (const [prodType, gradeList] of Object.entries(STANDARD_GRADES)) {
       for (const grade of gradeList) {
         grades.push({
@@ -1358,12 +1493,99 @@ export const webLogPro = {
     return { species, error: '' }
   },
 
+  async updateSpecies(
+    workbookPath: string,
+    speciesId: string | number,
+    data: { speciesName: string; notes?: string },
+  ): Promise<{ species: SpeciesDefinition[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { species: [], error: 'No workbook is open.' }
+
+    const cleanName = data.speciesName.trim()
+    if (!cleanName) return { species: [], error: 'Species name is required.' }
+
+    const species = readSpeciesDefinitions(workbook)
+    const targetIdx = species.findIndex(
+      (s) =>
+        String(s.SpeciesDefinitionID) === String(speciesId) ||
+        s.SpeciesName.toLowerCase() === String(speciesId).toLowerCase(),
+    )
+    if (targetIdx === -1) {
+      return { species, error: 'Species definition not found.' }
+    }
+
+    const oldName = species[targetIdx].SpeciesName
+    if (cleanName.toLowerCase() !== oldName.toLowerCase()) {
+      const duplicate = species.some(
+        (s, idx) => idx !== targetIdx && s.SpeciesName.toLowerCase() === cleanName.toLowerCase(),
+      )
+      if (duplicate) {
+        return { species, error: `Species "${cleanName}" already exists.` }
+      }
+    }
+
+    species[targetIdx] = {
+      ...species[targetIdx],
+      SpeciesName: cleanName,
+      Notes: data.notes !== undefined ? data.notes.trim() : species[targetIdx].Notes,
+    }
+
+    setRows(workbook, 'SpeciesDefinitions', HEADERS.SpeciesDefinitions, species as any)
+
+    // Cascade rename to GradeDefinitions
+    if (cleanName.toLowerCase() !== oldName.toLowerCase()) {
+      const grades = readGradeDefinitions(workbook)
+      let gradeChanged = false
+      grades.forEach((g) => {
+        if (g.SpeciesName && g.SpeciesName.toLowerCase() === oldName.toLowerCase()) {
+          g.SpeciesName = cleanName
+          gradeChanged = true
+        }
+      })
+      if (gradeChanged) {
+        setRows(workbook, 'GradeDefinitions', HEADERS.GradeDefinitions, grades as any)
+      }
+    }
+
+    saveWorkbookToStorage(workbookPath, workbook)
+    return { species, error: '' }
+  },
+
+  async deleteSpecies(
+    workbookPath: string,
+    speciesId: string | number,
+  ): Promise<{ species: SpeciesDefinition[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { species: [], error: 'No workbook is open.' }
+
+    const species = readSpeciesDefinitions(workbook)
+    const target = species.find(
+      (s) =>
+        String(s.SpeciesDefinitionID) === String(speciesId) ||
+        s.SpeciesName.toLowerCase() === String(speciesId).toLowerCase(),
+    )
+    if (!target) {
+      return { species, error: 'Species definition not found.' }
+    }
+
+    const remaining = species.filter(
+      (s) => String(s.SpeciesDefinitionID) !== String(target.SpeciesDefinitionID),
+    )
+
+    setRows(workbook, 'SpeciesDefinitions', HEADERS.SpeciesDefinitions, remaining as any)
+    saveWorkbookToStorage(workbookPath, workbook)
+
+    return { species: remaining, error: '' }
+  },
+
   async addGrade(
     workbookPath: string,
     speciesName: string,
     productType: 'Fresh Logs' | 'Burnt Logs',
     gradeName: string,
     notes = 'User-added grade',
+    supplierId?: string | number,
+    supplierName?: string,
   ): Promise<{ grades: GradeDefinition[]; error: string }> {
     const workbook = getWorkbook(workbookPath)
     if (!workbook) return { grades: [], error: 'No workbook is open.' }
@@ -1371,19 +1593,27 @@ export const webLogPro = {
     const clean = gradeName.trim()
     if (!clean) return { grades: [], error: 'Grade name is required.' }
 
+    const cleanSupplierId = supplierId ? String(supplierId).trim() : ''
+    const cleanSupplierName = supplierName ? String(supplierName).trim() : ''
+
     const grades = readGradeDefinitions(workbook)
     const exists = grades.some(
       (g) =>
         g.ProductType === productType &&
         g.GradeName.toLowerCase() === clean.toLowerCase() &&
-        (!speciesName || !g.SpeciesName || g.SpeciesName.toLowerCase() === speciesName.toLowerCase()),
+        (!speciesName || !g.SpeciesName || g.SpeciesName.toLowerCase() === speciesName.toLowerCase()) &&
+        (cleanSupplierId ? String(g.SupplierID) === cleanSupplierId : (!g.SupplierID && !cleanSupplierId)),
     )
     if (exists) {
-      return { grades, error: 'This grade already exists for the selected category.' }
+      return { grades, error: 'This grade already exists for the selected category and supplier.' }
     }
 
+    const nextId = grades.reduce((max, g) => Math.max(max, Number(g.GradeDefinitionID) || 0), 0) + 1
+
     grades.push({
-      GradeDefinitionID: grades.length + 1,
+      GradeDefinitionID: nextId,
+      SupplierID: cleanSupplierId,
+      SupplierName: cleanSupplierName,
       SpeciesName: speciesName.trim(),
       ProductType: productType,
       GradeName: clean,
@@ -1395,6 +1625,86 @@ export const webLogPro = {
     saveWorkbookToStorage(workbookPath, workbook)
 
     return { grades, error: '' }
+  },
+
+  async updateGrade(
+    workbookPath: string,
+    gradeId: string | number,
+    data: {
+      gradeName: string
+      speciesName?: string
+      productType?: 'Fresh Logs' | 'Burnt Logs'
+      supplierId?: string | number
+      supplierName?: string
+      notes?: string
+    },
+  ): Promise<{ grades: GradeDefinition[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { grades: [], error: 'No workbook is open.' }
+
+    const cleanName = data.gradeName.trim()
+    if (!cleanName) return { grades: [], error: 'Grade name is required.' }
+
+    const grades = readGradeDefinitions(workbook)
+    const targetIdx = grades.findIndex(
+      (g) => String(g.GradeDefinitionID) === String(gradeId),
+    )
+    if (targetIdx === -1) {
+      return { grades, error: 'Grade definition not found.' }
+    }
+
+    const target = grades[targetIdx]
+    const updatedProdType = data.productType || target.ProductType
+    const updatedSpecies = data.speciesName !== undefined ? data.speciesName.trim() : (target.SpeciesName || '')
+    const updatedSupplierId = data.supplierId !== undefined ? String(data.supplierId).trim() : (target.SupplierID || '')
+    const updatedSupplierName = data.supplierName !== undefined ? String(data.supplierName).trim() : (target.SupplierName || '')
+
+    // Check duplicate
+    const duplicate = grades.some(
+      (g, idx) =>
+        idx !== targetIdx &&
+        g.ProductType === updatedProdType &&
+        g.GradeName.toLowerCase() === cleanName.toLowerCase() &&
+        (!updatedSpecies || !g.SpeciesName || g.SpeciesName.toLowerCase() === updatedSpecies.toLowerCase()) &&
+        (updatedSupplierId ? String(g.SupplierID) === updatedSupplierId : (!g.SupplierID && !updatedSupplierId)),
+    )
+    if (duplicate) {
+      return { grades, error: 'Another grade with this name already exists for the selected category and supplier.' }
+    }
+
+    grades[targetIdx] = {
+      ...target,
+      GradeName: cleanName,
+      ProductType: updatedProdType,
+      SpeciesName: updatedSpecies,
+      SupplierID: updatedSupplierId,
+      SupplierName: updatedSupplierName,
+      Notes: data.notes !== undefined ? data.notes.trim() : target.Notes,
+    }
+
+    setRows(workbook, 'GradeDefinitions', HEADERS.GradeDefinitions, grades as any)
+    saveWorkbookToStorage(workbookPath, workbook)
+
+    return { grades, error: '' }
+  },
+
+  async deleteGrade(
+    workbookPath: string,
+    gradeId: string | number,
+  ): Promise<{ grades: GradeDefinition[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { grades: [], error: 'No workbook is open.' }
+
+    const grades = readGradeDefinitions(workbook)
+    const remaining = grades.filter((g) => String(g.GradeDefinitionID) !== String(gradeId))
+    if (remaining.length === grades.length) {
+      return { grades, error: 'Grade definition not found.' }
+    }
+
+    setRows(workbook, 'GradeDefinitions', HEADERS.GradeDefinitions, remaining as any)
+    saveWorkbookToStorage(workbookPath, workbook)
+
+    return { grades: remaining, error: '' }
   },
 
   // ---- Costings & Reverse Netback ----

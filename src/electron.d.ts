@@ -42,6 +42,31 @@ declare global {
         error: string
       }>
 
+      updateSupplier: (
+        workbookPath: string,
+        supplierId: string | number,
+        supplier: Partial<SupplierInput> & {
+          SupplierName?: string
+          Address?: string
+          ABN?: string
+          PaymentTerms?: string
+          Phone?: string
+          Email?: string
+          Notes?: string
+        },
+      ) => Promise<{
+        suppliers: Supplier[]
+        error: string
+      }>
+
+      deleteSupplier: (
+        workbookPath: string,
+        supplierId: string | number,
+      ) => Promise<{
+        suppliers: Supplier[]
+        error: string
+      }>
+
       saveSupplierContact: (
         workbookPath: string,
         contactInput: Partial<SupplierContact>,
@@ -108,12 +133,39 @@ declare global {
         speciesName: string,
         notes?: string,
       ) => Promise<{ species: SpeciesDefinition[]; error: string }>
+      updateSpecies: (
+        workbookPath: string,
+        speciesId: string | number,
+        data: { speciesName: string; notes?: string },
+      ) => Promise<{ species: SpeciesDefinition[]; error: string }>
+      deleteSpecies: (
+        workbookPath: string,
+        speciesId: string | number,
+      ) => Promise<{ species: SpeciesDefinition[]; error: string }>
       addGrade: (
         workbookPath: string,
         speciesName: string,
         productType: 'Fresh Logs' | 'Burnt Logs',
         gradeName: string,
         notes?: string,
+        supplierId?: string | number,
+        supplierName?: string,
+      ) => Promise<{ grades: GradeDefinition[]; error: string }>
+      updateGrade: (
+        workbookPath: string,
+        gradeId: string | number,
+        data: {
+          gradeName: string
+          speciesName?: string
+          productType?: 'Fresh Logs' | 'Burnt Logs'
+          supplierId?: string | number
+          supplierName?: string
+          notes?: string
+        },
+      ) => Promise<{ grades: GradeDefinition[]; error: string }>
+      deleteGrade: (
+        workbookPath: string,
+        gradeId: string | number,
       ) => Promise<{ grades: GradeDefinition[]; error: string }>
 
       getCostings: (workbookPath: string) => LegacyCostingRecord[]
