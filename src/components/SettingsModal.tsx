@@ -84,16 +84,16 @@ export function SettingsModal({
 
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
-  const [speciesSubTab, setSpeciesSubTab] = useState<'species' | 'grades'>('species')
   const [newSpeciesName, setNewSpeciesName] = useState('')
-  const [newSpeciesNotes, setNewSpeciesNotes] = useState('')
   const [selectedProductType, setSelectedProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
-  const [newGradeName, setNewGradeName] = useState('')
-  const [newGradeSpeciesName, setNewGradeSpeciesName] = useState('')
-  const [newGradeNotes, setNewGradeNotes] = useState('')
-  const [newGradeSupplierId, setNewGradeSupplierId] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
+  const [isAddSpeciesOpen, setIsAddSpeciesOpen] = useState(false)
+  const [isAddGradeOpen, setIsAddGradeOpen] = useState(false)
+  const [addGradeSpeciesName, setAddGradeSpeciesName] = useState('')
+  const [addGradeProductType, setAddGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
+  const [addGradeSupplierId, setAddGradeSupplierId] = useState('')
+  const [addGradeRows, setAddGradeRows] = useState<string[]>(['', '', '', '', ''])
   const [selectedGradeForDetails, setSelectedGradeForDetails] = useState<GradeDefinition | null>(null)
   const [speciesError, setSpeciesError] = useState('')
   const [speciesSuccess, setSpeciesSuccess] = useState('')
@@ -442,7 +442,7 @@ export function SettingsModal({
     const res = await window.logPro.addSpecies(
       workbookPath,
       newSpeciesName,
-      newSpeciesNotes || 'User-added species',
+      'User-added species',
     )
     setIsSubmittingSpecies(false)
 
@@ -451,9 +451,9 @@ export function SettingsModal({
     } else {
       setSpeciesSuccess(`Added species "${newSpeciesName}" with standard grades.`)
       setNewSpeciesName('')
-      setNewSpeciesNotes('')
       setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
+      setIsAddSpeciesOpen(false)
     }
   }
 
@@ -526,44 +526,57 @@ export function SettingsModal({
   }
 
   // Grade handlers
-  async function handleAddGrade(e: FormEvent) {
+  async function handleAddGradeRows(e: FormEvent) {
     e.preventDefault()
-    if (!newGradeName.trim()) {
-      setSpeciesError('Please enter a grade name.')
+    const namesToAdd = addGradeRows.map((n) => n.trim()).filter((n) => n !== '')
+
+    if (namesToAdd.length === 0) {
+      setSpeciesError('Please enter at least one grade name.')
       return
     }
+
     setSpeciesError('')
     setSpeciesSuccess('')
     setIsSubmittingSpecies(true)
 
-    const targetSupplierId = newGradeSupplierId || (selectedSupplierFilter || '')
     const supplierObj = suppliers.find(
-      (s) => String(s.SupplierID || s.SupplierReference) === String(targetSupplierId),
+      (s) => String(s.SupplierID || s.SupplierReference) === String(addGradeSupplierId),
     )
     const supplierName = supplierObj ? supplierObj.SupplierName : ''
-    const targetSpecies = newGradeSpeciesName || selectedSpeciesForGrade
 
-    const res = await window.logPro.addGrade(
-      workbookPath,
-      targetSpecies,
-      selectedProductType,
-      newGradeName,
-      newGradeNotes || 'User-added grade',
-      targetSupplierId,
-      supplierName,
-    )
+    let addedCount = 0
+    let lastError = ''
+
+    for (const gradeName of namesToAdd) {
+      const res = await window.logPro.addGrade(
+        workbookPath,
+        addGradeSpeciesName,
+        addGradeProductType,
+        gradeName,
+        'User-added grade',
+        addGradeSupplierId,
+        supplierName,
+      )
+      if (res.error) {
+        lastError = res.error
+      } else {
+        addedCount++
+      }
+    }
+
     setIsSubmittingSpecies(false)
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
+    if (addedCount > 0) {
       setSpeciesSuccess(
-        `Added grade "${newGradeName}" for ${selectedProductType}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
+        `Added ${addedCount} grade${addedCount === 1 ? '' : 's'} for ${addGradeProductType}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
       )
-      setNewGradeName('')
-      setNewGradeNotes('')
       setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
+      setAddGradeRows(['', '', '', '', ''])
+      setIsAddGradeOpen(false)
+    }
+    if (lastError) {
+      setSpeciesError(lastError)
     }
   }
 
@@ -781,141 +794,163 @@ export function SettingsModal({
           {activeTab === 'speciesGrades' && (
             <div className="settings-tab-pane">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                <div className="species-subtab-switch" style={{ marginBottom: 0 }}>
+                <div>
+                  <h4 className="pane-title" style={{ margin: 0 }}>Grades ({gradesList.length})</h4>
+                  <p className="pane-subtitle" style={{ margin: '2px 0 0' }}>{speciesList.length} species defined</p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
-                    className={`subtab-pill ${speciesSubTab === 'species' ? 'active' : ''}`}
-                    onClick={() => setSpeciesSubTab('species')}
+                    className="secondary-button"
+                    onClick={() => setIsAddSpeciesOpen((v) => !v)}
+                    style={{ width: 'auto', padding: '7px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
-                    Species ({speciesList.length})
+                    <Plus size={14} /> Add Species
                   </button>
                   <button
                     type="button"
-                    className={`subtab-pill ${speciesSubTab === 'grades' ? 'active' : ''}`}
-                    onClick={() => setSpeciesSubTab('grades')}
+                    className="primary-button"
+                    onClick={() => setIsAddGradeOpen((v) => !v)}
+                    style={{ width: 'auto', padding: '7px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
-                    Grades ({gradesList.length})
+                    <Plus size={14} /> Add Grade
                   </button>
                 </div>
-
               </div>
+
+              {isAddSpeciesOpen && (
+                <form
+                  onSubmit={handleAddSpecies}
+                  className="settings-inline-form"
+                  style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', marginBottom: '14px' }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <label htmlFor="new-species-name">Species Name *</label>
+                    <input
+                      id="new-species-name"
+                      type="text"
+                      placeholder="e.g. Douglas Fir, Blue Gum"
+                      value={newSpeciesName}
+                      onChange={(e) => setNewSpeciesName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <button type="submit" className="primary-button" disabled={isSubmittingSpecies} style={{ width: 'auto' }}>
+                    <Save size={14} /> Save
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ width: 'auto' }}
+                    onClick={() => {
+                      setIsAddSpeciesOpen(false)
+                      setNewSpeciesName('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
+
+              {isAddGradeOpen && (
+                <form onSubmit={handleAddGradeRows} className="settings-inline-form" style={{ marginBottom: '14px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '12px' }}>
+                    <div>
+                      <label htmlFor="add-grade-species">Species</label>
+                      <select
+                        id="add-grade-species"
+                        value={addGradeSpeciesName}
+                        onChange={(e) => setAddGradeSpeciesName(e.target.value)}
+                      >
+                        <option value="">All Species</option>
+                        {speciesList.map((s) => (
+                          <option key={s.SpeciesName} value={s.SpeciesName}>
+                            {s.SpeciesName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="add-grade-product">Product Type</label>
+                      <select
+                        id="add-grade-product"
+                        value={addGradeProductType}
+                        onChange={(e) => setAddGradeProductType(e.target.value as any)}
+                      >
+                        {PRODUCT_TYPES.map((pt) => (
+                          <option key={pt} value={pt}>
+                            {pt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="add-grade-supplier">Supplier</label>
+                      <select
+                        id="add-grade-supplier"
+                        value={addGradeSupplierId}
+                        onChange={(e) => setAddGradeSupplierId(e.target.value)}
+                      >
+                        <option value="">All Suppliers (General)</option>
+                        {suppliers.map((s) => (
+                          <option
+                            key={String(s.SupplierID || s.SupplierReference)}
+                            value={String(s.SupplierID || s.SupplierReference)}
+                          >
+                            {s.SupplierName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                    {addGradeRows.map((rowValue, idx) => (
+                      <input
+                        key={idx}
+                        type="text"
+                        placeholder={`Grade name ${idx + 1}`}
+                        value={rowValue}
+                        onChange={(e) => {
+                          const updated = [...addGradeRows]
+                          updated[idx] = e.target.value
+                          setAddGradeRows(updated)
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ width: 'auto' }}
+                      onClick={() => setAddGradeRows((prev) => [...prev, ''])}
+                    >
+                      <Plus size={14} /> Add Another Row
+                    </button>
+                    <button type="submit" className="primary-button" disabled={isSubmittingSpecies} style={{ width: 'auto' }}>
+                      <Save size={14} /> Save Grades
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ width: 'auto' }}
+                      onClick={() => {
+                        setIsAddGradeOpen(false)
+                        setAddGradeRows(['', '', '', '', ''])
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
 
               {speciesError && <p className="notice notice-error">{speciesError}</p>}
               {speciesSuccess && <p className="notice notice-ok">{speciesSuccess}</p>}
 
-              {speciesSubTab === 'species' ? (
-                <div>
-                  <form onSubmit={handleAddSpecies} className="settings-inline-form">
-                    <div className="form-grid-3">
-                      <div>
-                        <label htmlFor="new-species-name">Species Name *</label>
-                        <input
-                          id="new-species-name"
-                          type="text"
-                          placeholder="e.g. Douglas Fir, Blue Gum"
-                          value={newSpeciesName}
-                          onChange={(e) => setNewSpeciesName(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="new-species-notes">Notes</label>
-                        <input
-                          id="new-species-notes"
-                          type="text"
-                          placeholder="Standard or plantation notes"
-                          value={newSpeciesNotes}
-                          onChange={(e) => setNewSpeciesNotes(e.target.value)}
-                        />
-                      </div>
-                      <div className="form-submit-cell">
-                        <button
-                          type="submit"
-                          className="primary-button"
-                          disabled={isSubmittingSpecies}
-                        >
-                          <Plus size={15} /> Add Species
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-
-                  <div className="settings-table-wrapper">
-                    <table className="settings-table">
-                      <thead>
-                        <tr>
-                          <th>Species Name</th>
-                          <th>Standard</th>
-                          <th>Notes</th>
-                          <th style={{ textAlign: 'center', width: isDeleteEnabled ? '135px' : '75px' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {speciesList.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="text-center muted">
-                              No species registered yet.
-                            </td>
-                          </tr>
-                        ) : (
-                          speciesList.map((sp, idx) => (
-                            <tr key={String(sp.SpeciesDefinitionID || idx)}>
-                              <td className="font-semibold">{sp.SpeciesName}</td>
-                              <td>
-                                <span className={`badge-pill ${sp.IsStandard ? 'badge-blue' : 'badge-amber'}`}>
-                                  {sp.IsStandard ? 'Standard' : 'Custom'}
-                                </span>
-                              </td>
-                              <td className="muted">{sp.Notes || '—'}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    onClick={() => handleStartEditSpecies(sp)}
-                                    title={`Edit ${sp.SpeciesName}`}
-                                    style={{
-                                      padding: '3px 8px',
-                                      fontSize: '0.78rem',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                    }}
-                                  >
-                                    <Pencil size={12} />
-                                    <span>Edit</span>
-                                  </button>
-                                  {isDeleteEnabled && (
-                                    <button
-                                      type="button"
-                                      className="secondary-button"
-                                      onClick={() => handleStartDeleteSpecies(sp)}
-                                      title={`Delete ${sp.SpeciesName}`}
-                                      style={{
-                                        padding: '3px 8px',
-                                        fontSize: '0.78rem',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        color: '#dc2626',
-                                        borderColor: '#fca5a5',
-                                        background: '#fef2f2',
-                                      }}
-                                    >
-                                      <Trash2 size={12} />
-                                      <span>Delete</span>
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <div>
+              <div>
                   {/* Top Filter Bar */}
                   <div
                     className="grades-filter-bar"
@@ -1026,9 +1061,8 @@ export function SettingsModal({
                             type="button"
                             className="secondary-button"
                             onClick={() => {
-                              setNewGradeSupplierId(selectedSupplierFilter)
-                              const nameInput = document.getElementById('new-grade-name')
-                              if (nameInput) nameInput.focus()
+                              setAddGradeSupplierId(selectedSupplierFilter)
+                              setIsAddGradeOpen(true)
                             }}
                             style={{
                               display: 'inline-flex',
@@ -1151,81 +1185,6 @@ export function SettingsModal({
                     </div>
                   )}
 
-                  {/* Add Grade Form */}
-                  <form onSubmit={handleAddGrade} className="settings-inline-form" style={{ marginBottom: '14px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr auto', gap: '8px', alignItems: 'end' }}>
-                      <div>
-                        <label htmlFor="new-grade-name">Grade Name *</label>
-                        <input
-                          id="new-grade-name"
-                          type="text"
-                          placeholder="e.g. Export A, Peeler"
-                          value={newGradeName}
-                          onChange={(e) => setNewGradeName(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="new-grade-supplier">Supplier</label>
-                        <select
-                          id="new-grade-supplier"
-                          value={newGradeSupplierId || (selectedSupplierFilter || '')}
-                          onChange={(e) => setNewGradeSupplierId(e.target.value)}
-                          style={{ width: '100%' }}
-                        >
-                          <option value="">All Suppliers (General)</option>
-                          {suppliers.map((s) => (
-                            <option
-                              key={String(s.SupplierID || s.SupplierReference)}
-                              value={String(s.SupplierID || s.SupplierReference)}
-                            >
-                              {s.SupplierName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label htmlFor="new-grade-species">Species</label>
-                        <select
-                          id="new-grade-species"
-                          value={newGradeSpeciesName || selectedSpeciesForGrade}
-                          onChange={(e) => setNewGradeSpeciesName(e.target.value)}
-                          style={{ width: '100%' }}
-                        >
-                          <option value="">All Species</option>
-                          {speciesList.map((s) => (
-                            <option key={s.SpeciesName} value={s.SpeciesName}>
-                              {s.SpeciesName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label htmlFor="new-grade-notes">Description / Spec</label>
-                        <input
-                          id="new-grade-notes"
-                          type="text"
-                          placeholder="Dimensions, sed, defect allowance"
-                          value={newGradeNotes}
-                          onChange={(e) => setNewGradeNotes(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="form-submit-cell">
-                        <button
-                          type="submit"
-                          className="primary-button"
-                          disabled={isSubmittingSpecies}
-                          style={{ whiteSpace: 'nowrap' }}
-                        >
-                          <Plus size={15} /> Add Grade
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-
                   {/* Grades Table */}
                   <div className="settings-table-wrapper">
                     <table className="settings-table">
@@ -1339,7 +1298,6 @@ export function SettingsModal({
                     </table>
                   </div>
                 </div>
-              )}
             </div>
           )}
 

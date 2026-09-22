@@ -32,7 +32,7 @@ import {
   PRODUCT_TYPES,
   STANDARD_GRADES,
 } from '../types'
-import { GradeSettingsModal } from './GradeSettingsModal'
+import { SettingsModal } from './SettingsModal'
 import { AddContactModal } from './AddContactModal'
 import { PriceRevisionModal, type DetectedPriceChange } from './PriceRevisionModal'
 import { ProcurementDetailView } from './ProcurementDetailView'
@@ -2404,13 +2404,12 @@ export function ProcurementsTab({
       </div>
 
       {/* Modals */}
-      <GradeSettingsModal
+      <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         workbookPath={workbookPath}
-        speciesList={speciesList}
-        gradesList={gradesList}
         suppliers={suppliers}
+        onOpenAddSupplier={() => {}}
         onRefresh={loadData}
       />
 
