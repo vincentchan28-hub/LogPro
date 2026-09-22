@@ -67,22 +67,6 @@ function Field({ label, value }: { label: string; value?: string | number }) {
   )
 }
 
-function getStatusColor(st: string): { bg: string; text: string; border: string } {
-  switch (st) {
-    case 'Active':
-      return { bg: '#ecfdf5', text: '#065f46', border: '#a7f3d0' }
-    case 'Accepted':
-      return { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' }
-    case 'Waiting for Acceptance':
-      return { bg: '#fffbeb', text: '#92400e', border: '#fde68a' }
-    case 'Completed':
-      return { bg: '#f3f4f6', text: '#374151', border: '#e5e7eb' }
-    case 'Cancelled':
-      return { bg: '#fef2f2', text: '#991b1b', border: '#fecaca' }
-    default:
-      return { bg: '#f8fafc', text: '#475569', border: '#cbd5e1' }
-  }
-}
 
 function money(value: number): string {
   return value.toLocaleString(undefined, {
@@ -107,7 +91,6 @@ export function ProcurementDetailView({
   onClose,
   onOpenSpec,
 }: ProcurementDetailViewProps) {
-  const statusColor = getStatusColor(procurement.Status)
   const hasSpec = Boolean(procurement.LogSpecFileID)
 
   let totalAgreed = 0
@@ -153,19 +136,6 @@ export function ProcurementDetailView({
           <strong style={{ fontSize: '1.3rem', color: 'var(--primary-dark)' }}>
             {procurement.ProcurementRef}
           </strong>
-          <span
-            style={{
-              padding: '3px 10px',
-              borderRadius: '12px',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              background: statusColor.bg,
-              color: statusColor.text,
-              border: `1px solid ${statusColor.border}`,
-            }}
-          >
-            {procurement.Status}
-          </span>
           {hasSpec && <Paperclip size={16} color="#0284c7" />}
         </div>
 
@@ -338,19 +308,19 @@ export function ProcurementDetailView({
         )}
       </div>
 
-      {/* Status & acceptance */}
+      {/* General Notes */}
       <div style={{ ...sectionStyle, marginBottom: 0 }}>
-        <h3 style={sectionTitleStyle}>Status &amp; Acceptance</h3>
-        <div style={gridStyle}>
-          <Field label="Status" value={procurement.Status} />
-          <Field label="Acceptance Date" value={procurement.AcceptanceDate} />
-          <Field label="Acceptance Time" value={procurement.AcceptanceTime} />
-          <Field label="Acceptance Method" value={procurement.AcceptanceMethod} />
-          <Field label="Accepted By" value={procurement.AcceptedByPerson} />
-        </div>
-        <div style={{ ...gridStyle, marginTop: '12px' }}>
-          <Field label="Acceptance Notes" value={procurement.AcceptanceNotes} />
-          <Field label="General Notes" value={procurement.Notes} />
+        <h3 style={sectionTitleStyle}>General Notes</h3>
+        <div
+          style={{
+            fontSize: '0.92rem',
+            color: 'var(--text)',
+            lineHeight: 1.5,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {procurement.Notes || '—'}
         </div>
       </div>
     </div>
