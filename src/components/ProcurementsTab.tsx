@@ -64,7 +64,7 @@ type GradeRowState = {
   tempId: string
   ProcurementGradeID?: number | string
   Species: string
-  ProductType: 'Green Logs' | 'Burnt Logs'
+  ProductType: 'Green' | 'Burnt'
   GradeName: string
   OfferedPricePerTonne: string | number
   AgreedPricePerTonne: string | number
@@ -147,7 +147,7 @@ export function ProcurementsTab({
     {
       tempId: getNextRowTempId(),
       Species: 'Radiata Pine',
-      ProductType: 'Green Logs',
+      ProductType: 'Green',
       GradeName: 'K Grade',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
@@ -234,7 +234,7 @@ export function ProcurementsTab({
   // ---------------- Grade rows ----------------
 
   function handleAddGradeRow() {
-    const defaultProduct = 'Green Logs'
+    const defaultProduct = 'Green'
     const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
     const newRow: GradeRowState = {
       tempId: getNextRowTempId(),

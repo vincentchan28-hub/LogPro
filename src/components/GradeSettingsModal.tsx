@@ -41,8 +41,8 @@ export function GradeSettingsModal({
   const [newSpeciesName, setNewSpeciesName] = useState('')
   const [newSpeciesNotes, setNewSpeciesNotes] = useState('')
   const [selectedProductType, setSelectedProductType] = useState<
-    'Green Logs' | 'Burnt Logs'
-  >('Green Logs')
+    'Green' | 'Burnt'
+  >('Green')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
   const [selectedGradeForDetails, setSelectedGradeForDetails] = useState<GradeDefinition | null>(null)
@@ -52,6 +52,7 @@ export function GradeSettingsModal({
   const [newGradeSupplierId, setNewGradeSupplierId] = useState('')
   const [newGradeSpeciesName, setNewGradeSpeciesName] = useState('')
   const [newGradeNotes, setNewGradeNotes] = useState('')
+  const [addToBoth, setAddToBoth] = useState(false)
 
   // Edit / Delete Species State
   const [editingSpecies, setEditingSpecies] = useState<SpeciesDefinition | null>(null)
@@ -66,7 +67,7 @@ export function GradeSettingsModal({
   const [editGradeName, setEditGradeName] = useState('')
   const [editGradeSupplierId, setEditGradeSupplierId] = useState('')
   const [editGradeSpeciesName, setEditGradeSpeciesName] = useState('')
-  const [editGradeProductType, setEditGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
+  const [editGradeProductType, setEditGradeProductType] = useState<'Green' | 'Burnt'>('Green')
   const [editGradeNotes, setEditGradeNotes] = useState('')
   const [isSavingGrade, setIsSavingGrade] = useState(false)
   const [deletingGrade, setDeletingGrade] = useState<GradeDefinition | null>(null)
@@ -235,28 +236,45 @@ export function GradeSettingsModal({
         )
       : undefined
 
-    const res = await window.logPro.addGrade(
-      workbookPath,
-      newGradeSpeciesName || selectedSpeciesForGrade,
-      selectedProductType,
-      newGradeName.trim(),
-      newGradeNotes.trim() || 'User-added grade',
-      suppId,
-      suppObj?.SupplierName,
-    )
+    let addedCount = 0
+    let lastError = ''
+
+    // If "Add to Both" is checked, add grades for both Green and Burnt
+    const productTypesToAdd = addToBoth ? ['Green', 'Burnt'] : [selectedProductType]
+
+    for (const productType of productTypesToAdd) {
+      const res = await window.logPro.addGrade(
+        workbookPath,
+        newGradeSpeciesName || selectedSpeciesForGrade,
+        productType,
+        newGradeName.trim(),
+        newGradeNotes.trim() || 'User-added grade',
+        suppId,
+        suppObj?.SupplierName,
+      )
+      if (res.error) {
+        lastError = res.error
+      } else {
+        addedCount++
+      }
+    }
+
     setIsSubmitting(false)
 
-    if (res.error) {
-      setErrorMsg(res.error)
-    } else {
+    if (addedCount > 0) {
+      const typeText = addToBoth ? 'Green and Burnt' : selectedProductType
       setSuccessMsg(
-        `Added grade "${newGradeName.trim()}" for ${selectedProductType}${
+        `Added grade "${newGradeName.trim()}" for ${typeText}${
           suppObj ? ` (${suppObj.SupplierName})` : ''
         }.`,
       )
       setNewGradeName('')
       setNewGradeNotes('')
+      setAddToBoth(false)
       onRefresh()
+    }
+    if (lastError) {
+      setErrorMsg(lastError)
     }
   }
 
@@ -265,7 +283,7 @@ export function GradeSettingsModal({
     setEditGradeName(g.GradeName)
     setEditGradeSupplierId(g.SupplierID ? String(g.SupplierID) : '')
     setEditGradeSpeciesName(g.SpeciesName || '')
-    setEditGradeProductType(g.ProductType === 'Burnt Logs' ? 'Burnt Logs' : 'Green Logs')
+    setEditGradeProductType(g.ProductType === 'Burnt' ? 'Burnt' : 'Green')
     setEditGradeNotes(g.Notes || '')
     setErrorMsg('')
     setSuccessMsg('')
@@ -604,24 +622,54 @@ export function GradeSettingsModal({
                 flexWrap: 'wrap',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
-                  Product:
-                </span>
-                {PRODUCT_TYPES.map((pt) => (
-                  <button
-                    key={pt}
-                    type="button"
-                    className={selectedProductType === pt ? '' : 'secondary-button'}
-                    style={{ width: 'auto', padding: '5px 12px', fontSize: '0.82rem' }}
-                    onClick={() => {
-                      setSelectedProductType(pt as any)
-                      setSelectedGradeForDetails(null)
-                    }}
-                  >
-                    {pt}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
+                    Product:
+                  </span>
+                  {PRODUCT_TYPES.map((pt) => (
+                    <button
+                      key={pt}
+                      type="button"
+                      className={selectedProductType === pt ? '' : 'secondary-button'}
+                      style={{ width: 'auto', padding: '5px 12px', fontSize: '0.82rem' }}
+                      onClick={() => {
+                        setSelectedProductType(pt as any)
+                        setSelectedGradeForDetails(null)
+                      }}
+                    >
+                      {pt}
+                    </button>
+                  ))}
+                </div>
+
+                <label
+                  htmlFor="add-grade-both-checkbox"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    color: '#334155',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    background: addToBoth ? '#f0fdf4' : '#f8fafc',
+                    border: `1px solid ${addToBoth ? '#22c55e' : '#e2e8f0'}`,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <input
+                    id="add-grade-both-checkbox"
+                    type="checkbox"
+                    checked={addToBoth}
+                    onChange={(e) => setAddToBoth(e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#22c55e' }}
+                  />
+                  <span>Add to both Green and Burnt</span>
+                </label>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

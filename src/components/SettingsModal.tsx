@@ -85,15 +85,16 @@ export function SettingsModal({
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
   const [newSpeciesName, setNewSpeciesName] = useState('')
-  const [selectedProductType, setSelectedProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
+  const [selectedProductType, setSelectedProductType] = useState<'Green' | 'Burnt'>('Green')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
   const [isAddSpeciesOpen, setIsAddSpeciesOpen] = useState(false)
   const [isAddGradeOpen, setIsAddGradeOpen] = useState(false)
   const [addGradeSpeciesName, setAddGradeSpeciesName] = useState('')
-  const [addGradeProductType, setAddGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
+  const [addGradeProductType, setAddGradeProductType] = useState<'Green' | 'Burnt'>('Green')
   const [addGradeSupplierId, setAddGradeSupplierId] = useState('')
   const [addGradeRows, setAddGradeRows] = useState<string[]>(['', '', '', '', ''])
+  const [addGradeToBoth, setAddGradeToBoth] = useState(false)
   const [selectedGradeForDetails, setSelectedGradeForDetails] = useState<GradeDefinition | null>(null)
   const [speciesError, setSpeciesError] = useState('')
   const [speciesSuccess, setSpeciesSuccess] = useState('')
@@ -112,7 +113,7 @@ export function SettingsModal({
   const [editGradeName, setEditGradeName] = useState('')
   const [editGradeSupplierId, setEditGradeSupplierId] = useState('')
   const [editGradeSpeciesName, setEditGradeSpeciesName] = useState('')
-  const [editGradeProductType, setEditGradeProductType] = useState<'Green Logs' | 'Burnt Logs'>('Green Logs')
+  const [editGradeProductType, setEditGradeProductType] = useState<'Green' | 'Burnt'>('Green')
   const [editGradeNotes, setEditGradeNotes] = useState('')
   const [deletingGrade, setDeletingGrade] = useState<GradeDefinition | null>(null)
   const [isSavingGrade, setIsSavingGrade] = useState(false)
@@ -547,32 +548,39 @@ export function SettingsModal({
     let addedCount = 0
     let lastError = ''
 
-    for (const gradeName of namesToAdd) {
-      const res = await window.logPro.addGrade(
-        workbookPath,
-        addGradeSpeciesName,
-        addGradeProductType,
-        gradeName,
-        'User-added grade',
-        addGradeSupplierId,
-        supplierName,
-      )
-      if (res.error) {
-        lastError = res.error
-      } else {
-        addedCount++
+    // If "Add to Both" is checked, add grades for both Green and Burnt
+    const productTypesToAdd = addGradeToBoth ? ['Green', 'Burnt'] : [addGradeProductType]
+
+    for (const productType of productTypesToAdd) {
+      for (const gradeName of namesToAdd) {
+        const res = await window.logPro.addGrade(
+          workbookPath,
+          addGradeSpeciesName,
+          productType,
+          gradeName,
+          'User-added grade',
+          addGradeSupplierId,
+          supplierName,
+        )
+        if (res.error) {
+          lastError = res.error
+        } else {
+          addedCount++
+        }
       }
     }
 
     setIsSubmittingSpecies(false)
 
     if (addedCount > 0) {
+      const typeText = addGradeToBoth ? 'Green and Burnt' : addGradeProductType
       setSpeciesSuccess(
-        `Added ${addedCount} grade${addedCount === 1 ? '' : 's'} for ${addGradeProductType}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
+        `Added ${addedCount} grade${addedCount === 1 ? '' : 's'} for ${typeText}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
       )
       setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
       setAddGradeRows(['', '', '', '', ''])
+      setAddGradeToBoth(false)
       setIsAddGradeOpen(false)
     }
     if (lastError) {
@@ -585,7 +593,7 @@ export function SettingsModal({
     setEditGradeName(g.GradeName)
     setEditGradeSupplierId(String(g.SupplierID || ''))
     setEditGradeSpeciesName(g.SpeciesName || '')
-    setEditGradeProductType((g.ProductType as any) || 'Green Logs')
+    setEditGradeProductType((g.ProductType as any) || 'Green')
     setEditGradeNotes(g.Notes || '')
     setSpeciesError('')
     setSpeciesSuccess('')
@@ -875,13 +883,11 @@ export function SettingsModal({
                       <select
                         id="add-grade-product"
                         value={addGradeProductType}
-                        onChange={(e) => setAddGradeProductType(e.target.value as any)}
+                        onChange={(e) => setAddGradeProductType(e.target.value as 'Green' | 'Burnt')}
+                        disabled={addGradeToBoth}
                       >
-                        {PRODUCT_TYPES.map((pt) => (
-                          <option key={pt} value={pt}>
-                            {pt}
-                          </option>
-                        ))}
+                        <option value="Green">Green</option>
+                        <option value="Burnt">Burnt</option>
                       </select>
                     </div>
                     <div>
@@ -901,6 +907,21 @@ export function SettingsModal({
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '28px' }}>
+                      <input
+                        id="add-grade-both"
+                        type="checkbox"
+                        checked={addGradeToBoth}
+                        onChange={(e) => setAddGradeToBoth(e.target.checked)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <label
+                        htmlFor="add-grade-both"
+                        style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        Add to both Green and Burnt
+                      </label>
                     </div>
                   </div>
 
@@ -2091,7 +2112,7 @@ export function SettingsModal({
                     <select
                       id="edit-grade-prodtype"
                       value={editGradeProductType}
-                      onChange={(e) => setEditGradeProductType(e.target.value as any)}
+                      onChange={(e) => setEditGradeProductType(e.target.value as 'Green' | 'Burnt')}
                       disabled={isSavingGrade}
                       style={{ width: '100%' }}
                     >
