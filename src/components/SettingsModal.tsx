@@ -458,13 +458,6 @@ export function SettingsModal({
     }
   }
 
-  function handleStartEditSpecies(sp: SpeciesDefinition) {
-    setEditingSpecies(sp)
-    setEditSpeciesName(sp.SpeciesName)
-    setEditSpeciesNotes(sp.Notes || '')
-    setSpeciesError('')
-    setSpeciesSuccess('')
-  }
 
   function handleCancelEditSpecies() {
     setEditingSpecies(null)
@@ -496,12 +489,6 @@ export function SettingsModal({
       setSpeciesGradesVersion((v) => v + 1)
       onRefresh()
     }
-  }
-
-  function handleStartDeleteSpecies(sp: SpeciesDefinition) {
-    setDeletingSpecies(sp)
-    setSpeciesError('')
-    setSpeciesSuccess('')
   }
 
   function handleCancelDeleteSpecies() {
@@ -551,12 +538,14 @@ export function SettingsModal({
     // If "Add to Both" is checked, add grades for both Green and Burnt
     const productTypesToAdd = addGradeToBoth ? ['Green', 'Burnt'] : [addGradeProductType]
 
-    for (const productType of productTypesToAdd) {
-      for (const gradeName of namesToAdd) {
+
+    for (const gradeName of namesToAdd) {
+      for (const productType of productTypesToAdd) {
+        const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
         const res = await window.logPro.addGrade(
           workbookPath,
           addGradeSpeciesName,
-          productType,
+          productTypeMapped,
           gradeName,
           'User-added grade',
           addGradeSupplierId,
@@ -622,7 +611,7 @@ export function SettingsModal({
 
     const res = await window.logPro.updateGrade(workbookPath, editingGrade.GradeDefinitionID, {
       gradeName: cleanName,
-      productType: editGradeProductType,
+      productType: editGradeProductType === 'Green' ? 'Green Logs' : 'Burnt Logs',
       speciesName: editGradeSpeciesName.trim(),
       supplierId: editGradeSupplierId,
       supplierName: supplierName,

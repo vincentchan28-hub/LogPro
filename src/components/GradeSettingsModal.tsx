@@ -243,10 +243,11 @@ export function GradeSettingsModal({
     const productTypesToAdd = addToBoth ? ['Green', 'Burnt'] : [selectedProductType]
 
     for (const productType of productTypesToAdd) {
+      const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
       const res = await window.logPro.addGrade(
         workbookPath,
         newGradeSpeciesName || selectedSpeciesForGrade,
-        productType,
+        productTypeMapped,
         newGradeName.trim(),
         newGradeNotes.trim() || 'User-added grade',
         suppId,
@@ -313,7 +314,7 @@ export function GradeSettingsModal({
       Number(editingGrade.GradeDefinitionID),
       {
         gradeName: editGradeName.trim(),
-        productType: editGradeProductType,
+        productType: editGradeProductType === 'Green' ? 'Green Logs' : 'Burnt Logs',
         speciesName: editGradeSpeciesName || '',
         supplierId: editGradeSupplierId ? editGradeSupplierId : undefined,
         supplierName: suppObj ? suppObj.SupplierName : undefined,

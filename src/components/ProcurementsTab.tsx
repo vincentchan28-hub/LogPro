@@ -12,7 +12,6 @@ import {
   Search,
   Download,
   Building,
-  UserCheck,
   Calendar,
   Layers,
   FileCheck,
@@ -28,7 +27,6 @@ import {
   type GradeDefinition,
   AGREEMENT_TYPES,
   STATUSES,
-  ACCEPTANCE_METHODS,
   PRODUCT_TYPES,
   STANDARD_GRADES,
 } from '../types'
@@ -64,7 +62,7 @@ type GradeRowState = {
   tempId: string
   ProcurementGradeID?: number | string
   Species: string
-  ProductType: 'Green' | 'Burnt'
+  ProductType: 'Green Logs' | 'Burnt Logs'
   GradeName: string
   OfferedPricePerTonne: string | number
   AgreedPricePerTonne: string | number
@@ -147,7 +145,7 @@ export function ProcurementsTab({
     {
       tempId: getNextRowTempId(),
       Species: 'Radiata Pine',
-      ProductType: 'Green',
+      ProductType: 'Green Logs',
       GradeName: 'K Grade',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
@@ -234,7 +232,7 @@ export function ProcurementsTab({
   // ---------------- Grade rows ----------------
 
   function handleAddGradeRow() {
-    const defaultProduct = 'Green'
+    const defaultProduct = 'Green Logs'
     const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
     const newRow: GradeRowState = {
       tempId: getNextRowTempId(),
