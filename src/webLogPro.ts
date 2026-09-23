@@ -1935,15 +1935,22 @@ export const webLogPro = {
 }
 
 export function initWebLogPro(): void {
+  const existingLogPro = (window as any).logPro
+
+  // Electron's preload.cjs safely exposes window.logPro as a read-only API.
+  // Keep that desktop API. This browser fallback is only used outside Electron.
+  if (existingLogPro) {
+    return
+  }
+
   try {
     if (window.localStorage.getItem(LAST_WORKBOOK_KEY) === null) {
-      // Default to the rich log_procurement.xlsx file
+      // Default to the rich log_procurement.xlsx file when running in a browser.
       window.localStorage.setItem(LAST_WORKBOOK_KEY, 'log_procurement.xlsx')
     }
   } catch {
     // Ignore storage errors
   }
 
-  // Bind to window.logPro
   ;(window as any).logPro = webLogPro
 }

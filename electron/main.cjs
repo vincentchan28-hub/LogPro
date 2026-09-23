@@ -3,22 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 
-const { app, BrowserWindow, dialog, ipcMain, net } = require('electron');
-const fs = require('fs');
-const path = require('path');
-const XLSX = require('xlsx');
-const { autoUpdater } = require('electron-updater');
-
-// Auto-update imports
-const { autoUpdater } = require('electron-updater');
-
-// Auto-update logging
-autoUpdater.logger = {
-  debug: (msg) => console.log('[auto-updater] DEBUG:', msg),
-  info: (msg) => console.log('[auto-updater] INFO:', msg),
-  warn: (msg) => console.warn('[auto-updater] WARN:', msg),
-  error: (msg) => console.error('[auto-updater] ERROR:', msg),
-};
 
 let mainWindow;
 
@@ -100,75 +84,18 @@ function createWindow() {
     },
   });
 
-  const startUrl = process.env.ELECTRON_START_URL || 'http://localhost:5173';
-  mainWindow.loadURL(startUrl);
+  const developmentUrl = process.env.ELECTRON_START_URL;
+
+  if (developmentUrl) {
+    mainWindow.loadURL(developmentUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
-
-
-// ---------------------------------------------------------------------------
-// Auto-update functions
-// ---------------------------------------------------------------------------
-
-function checkForUpdates() {
-  console.log('[auto-updater] Checking for updates...');
-  
-  autoUpdater.checkForUpdatesAndNotify({
-    title: 'LogPro Update Available',
-    body: 'A new version is available. Would you like to download and install it now?',
-  });
-}
-
-autoUpdater.on('update-available', (info) => {
-  console.log('[auto-updater] Update available:', info.version);
-  
-  const { dialog } = require('electron');
-  
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Available',
-    message: `A new version (v${info.version}) is available. Would you like to download and install it now?`,
-    buttons: ['Download', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-  }).then((result) => {
-    if (result.response === 0) {
-      autoUpdater.downloadUpdate();
-    }
-  });
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('[auto-updater] Update downloaded:', info.version);
-  
-  const { dialog } = require('electron');
-  
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Ready',
-    message: 'The update has been downloaded. LogPro will restart to install it.',
-    buttons: ['Restart Now'],
-    defaultId: 0,
-  }).then(() => {
-    autoUpdater.quitAndInstall();
-  });
-});
-
-autoUpdater.on('error', (err) => {
-  console.error('[auto-updater] Error:', err);
-});
-
-autoUpdater.on('checking-for-update', () => {
-  console.log('[auto-updater] Checking for update...');
-});
-
-autoUpdater.on('update-not-available', (info) => {
-  console.log('[auto-updater] Update not available:', info.version);
-});
-
 
 function friendlyError(error, action) {
   const code = error && error.code;
@@ -796,13 +723,6 @@ ipcMain.handle('costing:save', async (_event, workbookPath, costing) => {
 
 app.whenReady().then(() => {
   createWindow();
-  
-  // Check for updates after a short delay (only in production)
-  setTimeout(() => {
-    if (process.env.NODE_ENV !== 'development') {
-      checkForUpdates();
-    }
-  }, 2000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
