@@ -13,6 +13,14 @@ const api = {
     return ipcRenderer.invoke('workbook:load', workbookPath)
   },
 
+  readWorkbookFile(workbookPath) {
+    return ipcRenderer.invoke('workbook:readFile', workbookPath)
+  },
+
+  writeWorkbookFile(workbookPath, base64Data) {
+    return ipcRenderer.invoke('workbook:writeFile', workbookPath, base64Data)
+  },
+
   saveSupplier(workbookPath, supplier) {
     return ipcRenderer.invoke('supplier:save', workbookPath, supplier)
   },

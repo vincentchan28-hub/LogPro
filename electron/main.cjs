@@ -227,6 +227,38 @@ ipcMain.handle('workbook:load', async (_event, workbookPath) => {
   return { path: workbookPath, error: '', suppliers: readSuppliers(workbook) };
 });
 
+ipcMain.handle('workbook:readFile', async (_event, workbookPath) => {
+  try {
+    if (!workbookPath || !fs.existsSync(workbookPath)) {
+      return { base64: '', error: 'Workbook file does not exist.' };
+    }
+    const buffer = fs.readFileSync(workbookPath);
+    return { base64: buffer.toString('base64'), error: '' };
+  } catch (error) {
+    console.error('Could not read workbook file:', error);
+    return { base64: '', error: friendlyError(error, 'read the workbook') };
+  }
+});
+
+ipcMain.handle('workbook:writeFile', async (_event, workbookPath, base64Data) => {
+  try {
+    if (!workbookPath) {
+      return { ok: false, error: 'No workbook path specified.' };
+    }
+    await retryWhileLocked('backup', () =>
+      createBackupOncePerSession(workbookPath),
+    );
+    const buffer = Buffer.from(base64Data, 'base64');
+    await retryWhileLocked('write', () => {
+      fs.writeFileSync(workbookPath, buffer);
+    });
+    return { ok: true, error: '' };
+  } catch (error) {
+    console.error('Could not write workbook file:', error);
+    return { ok: false, error: friendlyError(error, 'save the workbook') };
+  }
+});
+
 ipcMain.handle('workbook:create', async () => {
   const result = await dialog.showSaveDialog({
     title: 'Create a new LogPro workbook',
