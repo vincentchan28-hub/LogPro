@@ -1900,7 +1900,7 @@ export function ProcurementsTab({
                 </div>
               </div>
 
-              {/* Section 6: Status & Acceptance */}
+              {/* Section 6: General Notes */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -1911,163 +1911,30 @@ export function ProcurementsTab({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <UserCheck size={18} color="var(--primary)" />
+                  <FileSpreadsheet size={18} color="var(--primary)" />
                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    6. Status & Acceptance
+                    6. General Notes
                   </h3>
                 </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '12px',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Status *
-                    </label>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                        fontWeight: 600,
-                      }}
-                    >
-                      {STATUSES.map((st) => (
-                        <option key={st} value={st}>
-                          {st}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Acceptance Date
-                    </label>
-                    <input
-                      type="date"
-                      value={acceptanceDate}
-                      onChange={(e) => setAcceptanceDate(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Acceptance Time
-                    </label>
-                    <input
-                      type="time"
-                      value={acceptanceTime}
-                      onChange={(e) => setAcceptanceTime(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Acceptance Method
-                    </label>
-                    <select
-                      value={acceptanceMethod}
-                      onChange={(e) => setAcceptanceMethod(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    >
-                      {ACCEPTANCE_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Accepted By Person
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Signatory name"
-                      value={acceptedByPerson}
-                      onChange={(e) => setAcceptedByPerson(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Acceptance Notes
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Acceptance conditions or contract reference"
-                      value={acceptanceNotes}
-                      onChange={(e) => setAcceptanceNotes(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                        fontSize: '0.85rem',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      General Notes
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Any general comments, delivery notes, or road permits"
-                      value={generalNotes}
-                      onChange={(e) => setGeneralNotes(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                        fontSize: '0.85rem',
-                      }}
-                    />
-                  </div>
+                <div>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                    General Notes
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Any general comments, delivery notes, or road permits"
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)',
+                      background: '#fff',
+                      fontSize: '0.85rem',
+                    }}
+                  />
                 </div>
               </div>
 

@@ -1,7 +1,7 @@
 {
   "name": "logpro",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -10,7 +10,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview --host 0.0.0.0 --port 5000",
-    "smoke:browser": "node scripts/browser-smoke.mjs"
+    "smoke:browser": "node scripts/browser-smoke.mjs",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "lucide-react": "^1.47.0",
@@ -27,9 +28,41 @@
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
+    "electron-updater": "^6.3.4",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.logpro.app",
+    "productName": "LogPro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "LogPro"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "vincentchan28-hub",
+      "repo": "logpro",
+      "private": true,
+      "releaseType": "release"
+    }
   }
 }

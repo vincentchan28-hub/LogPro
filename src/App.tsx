@@ -418,7 +418,6 @@ function App() {
               <div>
                 <div className="brand-title-wrap">
                   <h1>LogPro</h1>
-                  <span className="brand-version-pill">Enterprise v2.4</span>
                 </div>
                 <p>Timber & Log Procurement Management System</p>
               </div>
@@ -464,6 +463,11 @@ function App() {
           onOpenAddSupplier={() => openSupplierForm()}
           onRefresh={refreshWorkbookData}
         />
+
+        {/* Version footer */}
+        <footer className="app-version-footer">
+          LogPro v0.1.0
+        </footer>
 
         {isSupplierFormOpen && (
           <div className="modal-backdrop">
