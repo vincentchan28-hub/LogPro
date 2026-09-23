@@ -664,6 +664,14 @@ function saveWorkbookToStorage(path: string, workbook: XLSX.WorkBook): void {
   try {
     const base64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' })
     window.localStorage.setItem(`${STORAGE_PREFIX}${path}`, base64)
+
+    // If running in desktop Electron environment, persist directly to file on disk:
+    const desktop = (window as any).logProDesktop
+    if (desktop && typeof desktop.writeWorkbookFile === 'function') {
+      desktop.writeWorkbookFile(path, base64).catch((err: any) => {
+        console.warn('Desktop file write error:', err)
+      })
+    }
   } catch (error) {
     console.warn('Could not persist workbook to localStorage:', error)
   }
@@ -718,6 +726,17 @@ async function fetchBundledWorkbook(path: string): Promise<XLSX.WorkBook | null>
 
 export const webLogPro = {
   async openWorkbook(): Promise<WorkbookResult | null> {
+    const desktop = (window as any).logProDesktop
+    if (desktop && typeof desktop.openWorkbook === 'function') {
+      try {
+        const desktopResult = await desktop.openWorkbook()
+        if (!desktopResult || !desktopResult.path) return null
+        return await this.loadWorkbook(desktopResult.path)
+      } catch (err) {
+        console.warn('Desktop open workbook failed, falling back to browser picker', err)
+      }
+    }
+
     return new Promise((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
@@ -780,6 +799,20 @@ export const webLogPro = {
   },
 
   async createWorkbook(): Promise<WorkbookResult | null> {
+    const desktop = (window as any).logProDesktop
+    if (desktop && typeof desktop.createWorkbook === 'function') {
+      try {
+        const desktopResult = await desktop.createWorkbook()
+        if (!desktopResult || !desktopResult.path) return null
+        const workbook = XLSX.utils.book_new()
+        populateDefaultsIfEmpty(workbook)
+        saveWorkbookToStorage(desktopResult.path, workbook)
+        return await this.loadWorkbook(desktopResult.path)
+      } catch (err) {
+        console.warn('Desktop create workbook failed, falling back to browser', err)
+      }
+    }
+
     try {
       const workbook = XLSX.utils.book_new()
       populateDefaultsIfEmpty(workbook)
@@ -806,6 +839,22 @@ export const webLogPro = {
 
   async loadWorkbook(workbookPath: string): Promise<WorkbookResult> {
     let workbook = getWorkbook(workbookPath)
+
+    if (!workbook) {
+      const desktop = (window as any).logProDesktop
+      if (desktop && typeof desktop.readWorkbookFile === 'function') {
+        try {
+          const res = await desktop.readWorkbookFile(workbookPath)
+          if (res && res.base64) {
+            workbook = XLSX.read(res.base64, { type: 'base64' })
+            populateDefaultsIfEmpty(workbook)
+            workbookCache.set(workbookPath, workbook)
+          }
+        } catch (desktopErr) {
+          console.warn('Could not read desktop workbook file:', desktopErr)
+        }
+      }
+    }
 
     if (!workbook) {
       workbook = await fetchBundledWorkbook(workbookPath)
@@ -1937,20 +1986,37 @@ export const webLogPro = {
 export function initWebLogPro(): void {
   const existingLogPro = (window as any).logPro
 
-  // Electron's preload.cjs safely exposes window.logPro as a read-only API.
-  // Keep that desktop API. This browser fallback is only used outside Electron.
-  if (existingLogPro) {
-    return
+  // Preserve desktop bridge reference if exposed by Electron's preload.cjs
+  if (existingLogPro && !(window as any).logProDesktop) {
+    ;(window as any).logProDesktop = existingLogPro
   }
 
   try {
     if (window.localStorage.getItem(LAST_WORKBOOK_KEY) === null) {
-      // Default to the rich log_procurement.xlsx file when running in a browser.
       window.localStorage.setItem(LAST_WORKBOOK_KEY, 'log_procurement.xlsx')
     }
   } catch {
     // Ignore storage errors
   }
 
-  ;(window as any).logPro = webLogPro
+  // Merge webLogPro methods so that all features (species, grades, procurements, etc.)
+  // are fully available in both Electron desktop and browser environments
+  const merged: any = {
+    ...webLogPro,
+    ...(existingLogPro || {}),
+  }
+
+  // Explicitly ensure all workbook functions from webLogPro are bound
+  for (const [key, value] of Object.entries(webLogPro)) {
+    if (typeof value === 'function') {
+      merged[key] = (value as Function).bind(webLogPro)
+    }
+  }
+
+  // Preserve desktop native rate fetching if available
+  if (existingLogPro && typeof existingLogPro.getRates === 'function') {
+    merged.getRates = existingLogPro.getRates.bind(existingLogPro)
+  }
+
+  ;(window as any).logPro = merged
 }

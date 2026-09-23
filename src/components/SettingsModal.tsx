@@ -440,21 +440,26 @@ export function SettingsModal({
     setSpeciesSuccess('')
     setIsSubmittingSpecies(true)
 
-    const res = await window.logPro.addSpecies(
-      workbookPath,
-      newSpeciesName,
-      'User-added species',
-    )
-    setIsSubmittingSpecies(false)
+    try {
+      const res = await window.logPro.addSpecies(
+        workbookPath,
+        newSpeciesName,
+        'User-added species',
+      )
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
-      setSpeciesSuccess(`Added species "${newSpeciesName}" with standard grades.`)
-      setNewSpeciesName('')
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
-      setIsAddSpeciesOpen(false)
+      if (res.error) {
+        setSpeciesError(res.error)
+      } else {
+        setSpeciesSuccess(`Added species "${newSpeciesName}" with standard grades.`)
+        setNewSpeciesName('')
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
+        setIsAddSpeciesOpen(false)
+      }
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to add species.')
+    } finally {
+      setIsSubmittingSpecies(false)
     }
   }
 
@@ -474,20 +479,25 @@ export function SettingsModal({
 
     setIsSavingSpecies(true)
     setSpeciesError('')
-    const targetId = editingSpecies.SpeciesDefinitionID || editingSpecies.SpeciesName
-    const res = await window.logPro.updateSpecies(workbookPath, targetId, {
-      speciesName: cleanName,
-      notes: editSpeciesNotes.trim(),
-    })
-    setIsSavingSpecies(false)
+    try {
+      const targetId = editingSpecies.SpeciesDefinitionID || editingSpecies.SpeciesName
+      const res = await window.logPro.updateSpecies(workbookPath, targetId, {
+        speciesName: cleanName,
+        notes: editSpeciesNotes.trim(),
+      })
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
-      setSpeciesSuccess(`Species "${cleanName}" updated successfully.`)
-      setEditingSpecies(null)
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
+      if (res.error) {
+        setSpeciesError(res.error)
+      } else {
+        setSpeciesSuccess(`Species "${cleanName}" updated successfully.`)
+        setEditingSpecies(null)
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
+      }
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to update species.')
+    } finally {
+      setIsSavingSpecies(false)
     }
   }
 
@@ -499,17 +509,22 @@ export function SettingsModal({
     if (!deletingSpecies) return
     setIsDeletingSpecies(true)
     setSpeciesError('')
-    const targetId = deletingSpecies.SpeciesDefinitionID || deletingSpecies.SpeciesName
-    const res = await window.logPro.deleteSpecies(workbookPath, targetId)
-    setIsDeletingSpecies(false)
+    try {
+      const targetId = deletingSpecies.SpeciesDefinitionID || deletingSpecies.SpeciesName
+      const res = await window.logPro.deleteSpecies(workbookPath, targetId)
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
-      setSpeciesSuccess(`Species "${deletingSpecies.SpeciesName}" deleted.`)
-      setDeletingSpecies(null)
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
+      if (res.error) {
+        setSpeciesError(res.error)
+      } else {
+        setSpeciesSuccess(`Species "${deletingSpecies.SpeciesName}" deleted.`)
+        setDeletingSpecies(null)
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
+      }
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to delete species.')
+    } finally {
+      setIsDeletingSpecies(false)
     }
   }
 
@@ -527,53 +542,56 @@ export function SettingsModal({
     setSpeciesSuccess('')
     setIsSubmittingSpecies(true)
 
-    const supplierObj = suppliers.find(
-      (s) => String(s.SupplierID || s.SupplierReference) === String(addGradeSupplierId),
-    )
-    const supplierName = supplierObj ? supplierObj.SupplierName : ''
+    try {
+      const supplierObj = suppliers.find(
+        (s) => String(s.SupplierID || s.SupplierReference) === String(addGradeSupplierId),
+      )
+      const supplierName = supplierObj ? supplierObj.SupplierName : ''
 
-    let addedCount = 0
-    let lastError = ''
+      let addedCount = 0
+      let lastError = ''
 
-    // If "Add to Both" is checked, add grades for both Green and Burnt
-    const productTypesToAdd = addGradeToBoth ? ['Green', 'Burnt'] : [addGradeProductType]
+      // If "Add to Both" is checked, add grades for both Green and Burnt
+      const productTypesToAdd = addGradeToBoth ? ['Green', 'Burnt'] : [addGradeProductType]
 
-
-    for (const gradeName of namesToAdd) {
-      for (const productType of productTypesToAdd) {
-        const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
-        const res = await window.logPro.addGrade(
-          workbookPath,
-          addGradeSpeciesName,
-          productTypeMapped,
-          gradeName,
-          'User-added grade',
-          addGradeSupplierId,
-          supplierName,
-        )
-        if (res.error) {
-          lastError = res.error
-        } else {
-          addedCount++
+      for (const gradeName of namesToAdd) {
+        for (const productType of productTypesToAdd) {
+          const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
+          const res = await window.logPro.addGrade(
+            workbookPath,
+            addGradeSpeciesName,
+            productTypeMapped,
+            gradeName,
+            'User-added grade',
+            addGradeSupplierId,
+            supplierName,
+          )
+          if (res.error) {
+            lastError = res.error
+          } else {
+            addedCount++
+          }
         }
       }
-    }
 
-    setIsSubmittingSpecies(false)
-
-    if (addedCount > 0) {
-      const typeText = addGradeToBoth ? 'Green and Burnt' : addGradeProductType
-      setSpeciesSuccess(
-        `Added ${addedCount} grade${addedCount === 1 ? '' : 's'} for ${typeText}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
-      )
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
-      setAddGradeRows(['', '', '', '', ''])
-      setAddGradeToBoth(false)
-      setIsAddGradeOpen(false)
-    }
-    if (lastError) {
-      setSpeciesError(lastError)
+      if (addedCount > 0) {
+        const typeText = addGradeToBoth ? 'Green and Burnt' : addGradeProductType
+        setSpeciesSuccess(
+          `Added ${addedCount} grade${addedCount === 1 ? '' : 's'} for ${typeText}${supplierName ? ` (linked to ${supplierName})` : ''}.`,
+        )
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
+        setAddGradeRows(['', '', '', '', ''])
+        setAddGradeToBoth(false)
+        setIsAddGradeOpen(false)
+      }
+      if (lastError) {
+        setSpeciesError(lastError)
+      }
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to add grades.')
+    } finally {
+      setIsSubmittingSpecies(false)
     }
   }
 
@@ -604,42 +622,47 @@ export function SettingsModal({
     setIsSavingGrade(true)
     setSpeciesError('')
 
-    const supplierObj = suppliers.find(
-      (s) => String(s.SupplierID || s.SupplierReference) === String(editGradeSupplierId),
-    )
-    const supplierName = supplierObj ? supplierObj.SupplierName : ''
+    try {
+      const supplierObj = suppliers.find(
+        (s) => String(s.SupplierID || s.SupplierReference) === String(editGradeSupplierId),
+      )
+      const supplierName = supplierObj ? supplierObj.SupplierName : ''
 
-    const res = await window.logPro.updateGrade(workbookPath, editingGrade.GradeDefinitionID, {
-      gradeName: cleanName,
-      productType: editGradeProductType === 'Green' ? 'Green Logs' : 'Burnt Logs',
-      speciesName: editGradeSpeciesName.trim(),
-      supplierId: editGradeSupplierId,
-      supplierName: supplierName,
-      notes: editGradeNotes.trim(),
-    })
-    setIsSavingGrade(false)
+      const res = await window.logPro.updateGrade(workbookPath, editingGrade.GradeDefinitionID, {
+        gradeName: cleanName,
+        productType: editGradeProductType === 'Green' ? 'Green Logs' : 'Burnt Logs',
+        speciesName: editGradeSpeciesName.trim(),
+        supplierId: editGradeSupplierId,
+        supplierName: supplierName,
+        notes: editGradeNotes.trim(),
+      })
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
-      setSpeciesSuccess(`Grade "${cleanName}" updated successfully.`)
-      if (
-        selectedGradeForDetails &&
-        String(selectedGradeForDetails.GradeDefinitionID) === String(editingGrade.GradeDefinitionID)
-      ) {
-        setSelectedGradeForDetails({
-          ...editingGrade,
-          GradeName: cleanName,
-          ProductType: editGradeProductType,
-          SpeciesName: editGradeSpeciesName.trim(),
-          SupplierID: editGradeSupplierId,
-          SupplierName: supplierName,
-          Notes: editGradeNotes.trim(),
-        })
+      if (res.error) {
+        setSpeciesError(res.error)
+      } else {
+        setSpeciesSuccess(`Grade "${cleanName}" updated successfully.`)
+        if (
+          selectedGradeForDetails &&
+          String(selectedGradeForDetails.GradeDefinitionID) === String(editingGrade.GradeDefinitionID)
+        ) {
+          setSelectedGradeForDetails({
+            ...editingGrade,
+            GradeName: cleanName,
+            ProductType: editGradeProductType,
+            SpeciesName: editGradeSpeciesName.trim(),
+            SupplierID: editGradeSupplierId,
+            SupplierName: supplierName,
+            Notes: editGradeNotes.trim(),
+          })
+        }
+        setEditingGrade(null)
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
       }
-      setEditingGrade(null)
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to update grade.')
+    } finally {
+      setIsSavingGrade(false)
     }
   }
 
@@ -657,22 +680,27 @@ export function SettingsModal({
     if (!deletingGrade || !deletingGrade.GradeDefinitionID) return
     setIsDeletingGrade(true)
     setSpeciesError('')
-    const res = await window.logPro.deleteGrade(workbookPath, deletingGrade.GradeDefinitionID)
-    setIsDeletingGrade(false)
+    try {
+      const res = await window.logPro.deleteGrade(workbookPath, deletingGrade.GradeDefinitionID)
 
-    if (res.error) {
-      setSpeciesError(res.error)
-    } else {
-      setSpeciesSuccess(`Grade "${deletingGrade.GradeName}" deleted.`)
-      if (
-        selectedGradeForDetails &&
-        String(selectedGradeForDetails.GradeDefinitionID) === String(deletingGrade.GradeDefinitionID)
-      ) {
-        setSelectedGradeForDetails(null)
+      if (res.error) {
+        setSpeciesError(res.error)
+      } else {
+        setSpeciesSuccess(`Grade "${deletingGrade.GradeName}" deleted.`)
+        if (
+          selectedGradeForDetails &&
+          String(selectedGradeForDetails.GradeDefinitionID) === String(deletingGrade.GradeDefinitionID)
+        ) {
+          setSelectedGradeForDetails(null)
+        }
+        setDeletingGrade(null)
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
       }
-      setDeletingGrade(null)
-      setSpeciesGradesVersion((v) => v + 1)
-      onRefresh()
+    } catch (err: any) {
+      setSpeciesError(err?.message || 'Failed to delete grade.')
+    } finally {
+      setIsDeletingGrade(false)
     }
   }
 

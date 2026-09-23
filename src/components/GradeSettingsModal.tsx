@@ -135,20 +135,25 @@ export function GradeSettingsModal({
     setSuccessMsg('')
     setIsSubmitting(true)
 
-    const res = await window.logPro.addSpecies(
-      workbookPath,
-      newSpeciesName.trim(),
-      newSpeciesNotes.trim() || 'User-added species',
-    )
-    setIsSubmitting(false)
+    try {
+      const res = await window.logPro.addSpecies(
+        workbookPath,
+        newSpeciesName.trim(),
+        newSpeciesNotes.trim() || 'User-added species',
+      )
 
-    if (res.error) {
-      setErrorMsg(res.error)
-    } else {
-      setSuccessMsg(`Added species "${newSpeciesName.trim()}" with standard grades.`)
-      setNewSpeciesName('')
-      setNewSpeciesNotes('')
-      onRefresh()
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`Added species "${newSpeciesName.trim()}" with standard grades.`)
+        setNewSpeciesName('')
+        setNewSpeciesNotes('')
+        onRefresh()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to add species.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -170,22 +175,27 @@ export function GradeSettingsModal({
 
     setIsSavingSpecies(true)
     setErrorMsg('')
-    const res = await window.logPro.updateSpecies(
-      workbookPath,
-      Number(editingSpecies.SpeciesDefinitionID),
-      {
-        speciesName: editSpeciesName.trim(),
-        notes: editSpeciesNotes.trim(),
-      },
-    )
-    setIsSavingSpecies(false)
+    try {
+      const res = await window.logPro.updateSpecies(
+        workbookPath,
+        Number(editingSpecies.SpeciesDefinitionID),
+        {
+          speciesName: editSpeciesName.trim(),
+          notes: editSpeciesNotes.trim(),
+        },
+      )
 
-    if (res.error) {
-      setErrorMsg(res.error)
-    } else {
-      setSuccessMsg(`Successfully updated species "${editSpeciesName.trim()}".`)
-      setEditingSpecies(null)
-      onRefresh()
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`Successfully updated species "${editSpeciesName.trim()}".`)
+        setEditingSpecies(null)
+        onRefresh()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to update species.')
+    } finally {
+      setIsSavingSpecies(false)
     }
   }
 
@@ -227,55 +237,59 @@ export function GradeSettingsModal({
     setSuccessMsg('')
     setIsSubmitting(true)
 
-    const suppId = newGradeSupplierId || (selectedSupplierFilter || undefined)
-    const suppObj = suppId
-      ? suppliers.find(
-          (s) =>
-            String(s.SupplierID) === suppId ||
-            String(s.SupplierReference) === suppId,
+    try {
+      const suppId = newGradeSupplierId || (selectedSupplierFilter || undefined)
+      const suppObj = suppId
+        ? suppliers.find(
+            (s) =>
+              String(s.SupplierID) === suppId ||
+              String(s.SupplierReference) === suppId,
+          )
+        : undefined
+
+      let addedCount = 0
+      let lastError = ''
+
+      // If "Add to Both" is checked, add grades for both Green and Burnt
+      const productTypesToAdd = addToBoth ? ['Green', 'Burnt'] : [selectedProductType]
+
+      for (const productType of productTypesToAdd) {
+        const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
+        const res = await window.logPro.addGrade(
+          workbookPath,
+          newGradeSpeciesName || selectedSpeciesForGrade,
+          productTypeMapped,
+          newGradeName.trim(),
+          newGradeNotes.trim() || 'User-added grade',
+          suppId,
+          suppObj?.SupplierName,
         )
-      : undefined
-
-    let addedCount = 0
-    let lastError = ''
-
-    // If "Add to Both" is checked, add grades for both Green and Burnt
-    const productTypesToAdd = addToBoth ? ['Green', 'Burnt'] : [selectedProductType]
-
-    for (const productType of productTypesToAdd) {
-      const productTypeMapped = productType === 'Green' ? 'Green Logs' : 'Burnt Logs'
-      const res = await window.logPro.addGrade(
-        workbookPath,
-        newGradeSpeciesName || selectedSpeciesForGrade,
-        productTypeMapped,
-        newGradeName.trim(),
-        newGradeNotes.trim() || 'User-added grade',
-        suppId,
-        suppObj?.SupplierName,
-      )
-      if (res.error) {
-        lastError = res.error
-      } else {
-        addedCount++
+        if (res.error) {
+          lastError = res.error
+        } else {
+          addedCount++
+        }
       }
-    }
 
-    setIsSubmitting(false)
-
-    if (addedCount > 0) {
-      const typeText = addToBoth ? 'Green and Burnt' : selectedProductType
-      setSuccessMsg(
-        `Added grade "${newGradeName.trim()}" for ${typeText}${
-          suppObj ? ` (${suppObj.SupplierName})` : ''
-        }.`,
-      )
-      setNewGradeName('')
-      setNewGradeNotes('')
-      setAddToBoth(false)
-      onRefresh()
-    }
-    if (lastError) {
-      setErrorMsg(lastError)
+      if (addedCount > 0) {
+        const typeText = addToBoth ? 'Green and Burnt' : selectedProductType
+        setSuccessMsg(
+          `Added grade "${newGradeName.trim()}" for ${typeText}${
+            suppObj ? ` (${suppObj.SupplierName})` : ''
+          }.`,
+        )
+        setNewGradeName('')
+        setNewGradeNotes('')
+        setAddToBoth(false)
+        onRefresh()
+      }
+      if (lastError) {
+        setErrorMsg(lastError)
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to add grade.')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
