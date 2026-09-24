@@ -60,15 +60,162 @@ const workbookSheets = [
   'GradeDefinitions',
 ];
 
-const supplierHeaders = [
-  'SupplierReference',
-  'SupplierName',
-  'ABN',
-  'Phone',
-  'Email',
-  'Notes',
-  'CreatedAt',
-];
+const workbookHeaders = {
+  Suppliers: [
+    'SupplierID',
+    'SupplierReference',
+    'SupplierName',
+    'Address',
+    'ABN',
+    'PaymentTerms',
+    'Phone',
+    'Email',
+    'Notes',
+    'CreatedBy',
+    'CreatedAt',
+    'ChangedBy',
+    'ChangedAt',
+  ],
+  SupplierContacts: [
+    'ContactID',
+    'SupplierID',
+    'ContactName',
+    'Role',
+    'PhoneNumber',
+    'MobileNumber',
+    'Email',
+    'Notes',
+    'IsPrimary',
+    'CreatedAt',
+  ],
+  Procurements: [
+    'ProcurementID',
+    'ProcurementRef',
+    'SupplierID',
+    'ContactID',
+    'AgreementType',
+    'AgreementDetail',
+    'Plantation',
+    'Species',
+    'HarvestPeriodStart',
+    'HarvestPeriodEnd',
+    'StartDate',
+    'EndDate',
+    'Status',
+    'AcceptanceDate',
+    'AcceptanceTime',
+    'AcceptanceMethod',
+    'AcceptedByPerson',
+    'AcceptanceNotes',
+    'LogSpecFileID',
+    'LogSpecFileName',
+    'LogSpecFileType',
+    'Notes',
+    'CreatedBy',
+    'CreatedDate',
+    'ChangedBy',
+    'ChangedDate',
+  ],
+  ProcurementGrades: [
+    'ProcurementGradeID',
+    'ProcurementRef',
+    'Species',
+    'ProductType',
+    'GradeName',
+    'OfferedPricePerTonne',
+    'AgreedPricePerTonne',
+    'ResalePrice',
+    'AgreedTonnes',
+    'DeliveredTonnes',
+    'RemainingTonnes',
+    'Notes',
+  ],
+  PriceHistory: [
+    'PriceHistoryID',
+    'ProcurementRef',
+    'ProcurementGradeID',
+    'ProductType',
+    'GradeName',
+    'PreviousPrice',
+    'NewPrice',
+    'ChangeType',
+    'Reason',
+    'EffectiveDateTime',
+    'Notes',
+    'RecordedBy',
+    'RecordedDateTime',
+  ],
+  Costings: [
+    'CostingReference',
+    'CreatedAt',
+    'Label',
+    'DestinationCountry',
+    'LocalCurrency',
+    'SellingPriceUSD',
+    'SellingPriceLocal',
+    'SellingPriceAUD',
+    'ClearanceAUD',
+    'SeaFreightAUD',
+    'TransportAUD',
+    'FumigationAUD',
+    'PackingAUD',
+    'TotalCostsAUD',
+    'MaxAffordableOfferAUD',
+    'MaxAffordableOfferUSD',
+    'TraderCommissionAUD',
+    'RecommendedOfferAUD',
+    'RecommendedOfferUSD',
+    'AudPerUsd',
+    'LocalPerUsd',
+    'RateSource',
+    'RateDate',
+  ],
+  Resales: [
+    'ResaleID',
+    'ProcurementRef',
+    'ProcurementGradeID',
+    'BuyerName',
+    'SellingPricePerTonne',
+    'AgreedTonnes',
+    'DeliveredTonnes',
+    'RemainingTonnes',
+    'Notes',
+    'CreatedAt',
+  ],
+  Users: [
+    'UserID',
+    'UserName',
+    'DisplayName',
+    'Role',
+    'IsActive',
+    'CreatedAt',
+  ],
+  Settings: [
+    'SettingKey',
+    'SettingValue',
+    'ChangedAt',
+  ],
+  SpeciesDefinitions: [
+    'SpeciesDefinitionID',
+    'SpeciesName',
+    'IsStandard',
+    'Notes',
+    'CreatedAt',
+  ],
+  GradeDefinitions: [
+    'GradeDefinitionID',
+    'SupplierID',
+    'SupplierName',
+    'SpeciesName',
+    'ProductType',
+    'GradeName',
+    'IsStandard',
+    'Notes',
+    'CreatedAt',
+  ],
+};
+
+const supplierHeaders = workbookHeaders.Suppliers;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -275,10 +422,11 @@ ipcMain.handle('workbook:create', async () => {
     const workbook = XLSX.utils.book_new();
 
     for (const sheetName of workbookSheets) {
-      const worksheet = XLSX.utils.aoa_to_sheet([]);
+      const headers = workbookHeaders[sheetName] || [];
+      const worksheet = XLSX.utils.aoa_to_sheet(headers.length > 0 ? [headers] : []);
 
-      if (sheetName === 'Suppliers') {
-        XLSX.utils.sheet_add_aoa(worksheet, [supplierHeaders]);
+      if (headers.length > 0) {
+        worksheet['!cols'] = headers.map(() => ({ wch: 22 }));
       }
 
       XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);

@@ -102,24 +102,39 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   useEffect(() => {
-    // Default to log_procurement.xlsx if nothing is saved
-    const lastWorkbook = readLastWorkbook() || 'log_procurement.xlsx'
+    const lastWorkbook = readLastWorkbook()
 
     if (typeof window.logPro?.loadWorkbook !== 'function') {
       Promise.resolve().then(() => setIsStarting(false))
       return
     }
 
+    if (!lastWorkbook) {
+      setIsStarting(false)
+      return
+    }
+
     window.logPro
       .loadWorkbook(lastWorkbook)
-      .then((result) => applyWorkbookResult(result))
-      .catch((err) => {
-        console.warn('Initial workbook load error:', err)
-        // Fallback to logpro.xlsx if needed
-        window.logPro
-          .loadWorkbook('logpro.xlsx')
-          .then((r) => applyWorkbookResult(r))
-          .catch(() => setErrorMessage('Could not load workbook.'))
+      .then((result) => {
+        if (!result || result.error || !result.path) {
+          rememberWorkbook('')
+          setSelectedWorkbook('')
+          setErrorMessage(
+            'Your previously selected workbook could not be found. Please create a new workbook or open an existing one.',
+          )
+          return
+        }
+
+        applyWorkbookResult(result)
+      })
+      .catch((error) => {
+        console.warn('Initial workbook load error:', error)
+        rememberWorkbook('')
+        setSelectedWorkbook('')
+        setErrorMessage(
+          'Your previously selected workbook could not be opened. Please create a new workbook or open an existing one.',
+        )
       })
       .finally(() => setIsStarting(false))
   }, [])
