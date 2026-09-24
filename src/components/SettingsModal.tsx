@@ -21,11 +21,11 @@ import {
   type Supplier,
   type SpeciesDefinition,
   type GradeDefinition,
+  type WorkbookResult,
   PRODUCT_TYPES,
 } from '../types'
 
 type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook'
-
 // The name the browser uses to remember the size of the Settings box.
 const SETTINGS_SIZE_KEY = 'logpro.settingsModalSize'
 
@@ -69,6 +69,7 @@ type SettingsModalProps = {
   suppliers: Supplier[]
   onOpenAddSupplier: () => void
   onRefresh: () => void
+  onWorkbookChanged?: (result: WorkbookResult) => void
 }
 
 export function SettingsModal({
@@ -78,9 +79,13 @@ export function SettingsModal({
   suppliers,
   onOpenAddSupplier,
   onRefresh,
+  onWorkbookChanged,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('speciesGrades')
   const [hasCopiedLocation, setHasCopiedLocation] = useState(false)
+  const [workbookMessage, setWorkbookMessage] = useState('')
+  const [workbookError, setWorkbookError] = useState('')
+  const [isChangingWorkbook, setIsChangingWorkbook] = useState(false)
 
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
@@ -89,6 +94,7 @@ export function SettingsModal({
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
   const [isAddSpeciesOpen, setIsAddSpeciesOpen] = useState(false)
+  const [isSpeciesListVisible, setIsSpeciesListVisible] = useState(false)
   const [isAddGradeOpen, setIsAddGradeOpen] = useState(false)
   const [addGradeSpeciesName, setAddGradeSpeciesName] = useState('')
   const [addGradeProductType, setAddGradeProductType] = useState<'Green' | 'Burnt'>('Green')
@@ -136,6 +142,11 @@ export function SettingsModal({
 
   // Delete mode toggle for Grades and Suppliers tabs
   const [isDeleteEnabled, setIsDeleteEnabled] = useState(false)
+
+  // Multi-select delete for Grades
+  const [selectedGradeIdsForBulkDelete, setSelectedGradeIdsForBulkDelete] = useState<Set<string>>(new Set())
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
 
   // Supplier Delete state & handlers
   const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null)
@@ -239,6 +250,68 @@ export function SettingsModal({
     }
   }
 
+  async function handleOpenExistingWorkbook() {
+    setWorkbookMessage('')
+    setWorkbookError('')
+    setIsChangingWorkbook(true)
+
+    try {
+      const result = await window.logPro.openWorkbook()
+
+      if (!result) {
+        return
+      }
+
+      if (result.error) {
+        setWorkbookError(result.error)
+        return
+      }
+
+      if (!result.path) {
+        setWorkbookError('No workbook was selected.')
+        return
+      }
+
+      onWorkbookChanged?.(result)
+      setWorkbookMessage('Existing workbook opened successfully.')
+    } catch (err: any) {
+      setWorkbookError(err?.message || 'Could not create the workbook.')
+    } finally {
+      setIsChangingWorkbook(false)
+    }
+  }
+
+  async function handleCreateNewWorkbook() {
+    setWorkbookMessage('')
+    setWorkbookError('')
+    setIsChangingWorkbook(true)
+
+    try {
+      const result = await window.logPro.createWorkbook()
+
+      if (!result) {
+        return
+      }
+
+      if (result.error) {
+        setWorkbookError(result.error)
+        return
+      }
+
+      if (!result.path) {
+        setWorkbookError('The new workbook was not created.')
+        return
+      }
+
+      onWorkbookChanged?.(result)
+      setWorkbookMessage('New workbook created successfully.')
+    } catch (err: any) {
+      setWorkbookError(err?.message || 'Could not open the workbook.')
+    } finally {
+      setIsChangingWorkbook(false)
+    }
+  }
+
   // Load species & grades from logPro
   const speciesList: SpeciesDefinition[] = useMemo(() => {
     if (!workbookPath) return []
@@ -302,11 +375,8 @@ export function SettingsModal({
       )
       if (found) return found
     }
-    if (selectedSupplierFilter && filteredGrades.length > 0) {
-      return filteredGrades[0]
-    }
     return selectedGradeForDetails || null
-  }, [selectedGradeForDetails, selectedSupplierFilter, filteredGrades, gradesList])
+  }, [selectedGradeForDetails, gradesList])
 
   // Reports data computed from procurements & grades
   const reportData = useMemo(() => {
@@ -464,6 +534,14 @@ export function SettingsModal({
   }
 
 
+  function handleStartEditSpecies(sp: SpeciesDefinition) {
+    setEditingSpecies(sp)
+    setEditSpeciesName(sp.SpeciesName)
+    setEditSpeciesNotes(sp.Notes || '')
+    setSpeciesError('')
+    setSpeciesSuccess('')
+  }
+
   function handleCancelEditSpecies() {
     setEditingSpecies(null)
   }
@@ -499,6 +577,12 @@ export function SettingsModal({
     } finally {
       setIsSavingSpecies(false)
     }
+  }
+
+  function handleStartDeleteSpecies(sp: SpeciesDefinition) {
+    setDeletingSpecies(sp)
+    setSpeciesError('')
+    setSpeciesSuccess('')
   }
 
   function handleCancelDeleteSpecies() {
@@ -704,6 +788,50 @@ export function SettingsModal({
     }
   }
 
+  function toggleGradeSelectedForDelete(id: string) {
+    setSelectedGradeIdsForBulkDelete((current) => {
+      const updated = new Set(current)
+      if (updated.has(id)) {
+        updated.delete(id)
+      } else {
+        updated.add(id)
+      }
+      return updated
+    })
+  }
+
+  async function handleConfirmBulkDeleteGrades() {
+    if (selectedGradeIdsForBulkDelete.size === 0) return
+    setIsBulkDeleting(true)
+    setSpeciesError('')
+    try {
+      const ids = Array.from(selectedGradeIdsForBulkDelete)
+      let lastError = ''
+      let deletedCount = 0
+      for (const id of ids) {
+        const res = await window.logPro.deleteGrade(workbookPath, id)
+        if (res.error) {
+          lastError = res.error
+        } else {
+          deletedCount++
+        }
+      }
+      if (deletedCount > 0) {
+        setSpeciesSuccess(`Deleted ${deletedCount} grade${deletedCount === 1 ? '' : 's'}.`)
+        setSelectedGradeIdsForBulkDelete(new Set())
+        setSelectedGradeForDetails(null)
+        setSpeciesGradesVersion((v) => v + 1)
+        onRefresh()
+      }
+      if (lastError) {
+        setSpeciesError(lastError)
+      }
+    } finally {
+      setIsBulkDeleting(false)
+      setIsBulkDeleteConfirmOpen(false)
+    }
+  }
+
   const savedSize = readSavedSize()
 
   return (
@@ -758,7 +886,10 @@ export function SettingsModal({
                 id="settings-delete-mode-toggle"
                 type="checkbox"
                 checked={isDeleteEnabled}
-                onChange={(e) => setIsDeleteEnabled(e.target.checked)}
+                onChange={(e) => {
+                  setIsDeleteEnabled(e.target.checked)
+                  setSelectedGradeIdsForBulkDelete(new Set())
+                }}
               />
               <span className="delete-toggle-slider" />
             </label>
@@ -834,14 +965,81 @@ export function SettingsModal({
                   </button>
                   <button
                     type="button"
-                    className="primary-button"
-                    onClick={() => setIsAddGradeOpen((v) => !v)}
-                    style={{ width: 'auto', padding: '7px 14px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                    className="secondary-button"
+                    onClick={() => setIsSpeciesListVisible((v) => !v)}
+                    title="Edit existing species"
+                    style={{ width: 'auto', padding: '7px 10px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                   >
-                    <Plus size={14} /> Add Grade
+                    <Pencil size={14} />
                   </button>
                 </div>
               </div>
+
+              {isSpeciesListVisible && speciesList.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '8px',
+                    marginBottom: '14px',
+                  }}
+                >
+                  {speciesList.map((sp) => (
+                    <div
+                      key={sp.SpeciesName}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '4px 6px 4px 12px',
+                        borderRadius: '20px',
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                      }}
+                    >
+                      <Trees size={12} className="muted" />
+                      <span>{sp.SpeciesName}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditSpecies(sp)}
+                        title={`Edit ${sp.SpeciesName}`}
+                        style={{
+                          width: 'auto',
+                          padding: '2px',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#64748b',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                        }}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      {isDeleteEnabled && (
+                        <button
+                          type="button"
+                          onClick={() => handleStartDeleteSpecies(sp)}
+                          title={`Delete ${sp.SpeciesName}`}
+                          style={{
+                            width: 'auto',
+                            padding: '2px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#dc2626',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                          }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {isAddSpeciesOpen && (
                 <form
@@ -1217,17 +1415,69 @@ export function SettingsModal({
                         </div>
                       ) : (
                         <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-                          No grades currently registered specifically for this supplier. You can use the form below to register supplier-specific grades.
+                          {filteredGrades.length > 0
+                            ? 'Click a grade in the table below, or its pencil icon, to view or edit its details.'
+                            : 'No grades currently registered specifically for this supplier. You can use the form below to register supplier-specific grades.'}
                         </p>
                       )}
                     </div>
                   )}
 
                   {/* Grades Table */}
+                  {isDeleteEnabled && selectedGradeIdsForBulkDelete.size > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '10px',
+                        padding: '8px 12px',
+                        marginBottom: '10px',
+                        borderRadius: '8px',
+                        background: '#fef2f2',
+                        border: '1px solid #fca5a5',
+                      }}
+                    >
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#991b1b' }}>
+                        {selectedGradeIdsForBulkDelete.size} grade{selectedGradeIdsForBulkDelete.size === 1 ? '' : 's'} selected
+                      </span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setSelectedGradeIdsForBulkDelete(new Set())}
+                          style={{ width: 'auto', padding: '5px 10px', fontSize: '0.8rem' }}
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                          style={{
+                            width: 'auto',
+                            padding: '5px 12px',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            color: '#ffffff',
+                            background: '#dc2626',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                          }}
+                        >
+                          <Trash2 size={13} /> Delete Selected
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="settings-table-wrapper">
                     <table className="settings-table">
                       <thead>
                         <tr>
+                          {isDeleteEnabled && <th style={{ width: '36px' }}></th>}
                           <th>Grade Name</th>
                           <th>Supplier</th>
                           <th>Product Type</th>
@@ -1240,7 +1490,7 @@ export function SettingsModal({
                       <tbody>
                         {filteredGrades.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="text-center muted">
+                            <td colSpan={isDeleteEnabled ? 8 : 7} className="text-center muted">
                               No grades found for this filter.
                             </td>
                           </tr>
@@ -1250,9 +1500,11 @@ export function SettingsModal({
                               activeGradeForDetails &&
                               String(activeGradeForDetails.GradeDefinitionID) ===
                                 String(g.GradeDefinitionID)
+                            const gradeIdKey = String(g.GradeDefinitionID || idx)
+                            const isCheckedForDelete = selectedGradeIdsForBulkDelete.has(gradeIdKey)
                             return (
                               <tr
-                                key={String(g.GradeDefinitionID || idx)}
+                                key={gradeIdKey}
                                 onClick={() => setSelectedGradeForDetails(g)}
                                 style={{
                                   cursor: 'pointer',
@@ -1260,6 +1512,16 @@ export function SettingsModal({
                                 }}
                                 title="Click to view full grade details"
                               >
+                                {isDeleteEnabled && (
+                                  <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isCheckedForDelete}
+                                      onChange={() => toggleGradeSelectedForDelete(gradeIdKey)}
+                                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                                    />
+                                  </td>
+                                )}
                                 <td className="font-semibold">
                                   <span className="cell-flex">
                                     <Tag size={13} className="text-primary" />
@@ -1589,63 +1851,170 @@ export function SettingsModal({
             </div>
           )}
 
-          {/* TAB 4: WORKBOOK & EXPORT (Includes Export Workbook and Display Workbook Location) */}
+          {/* TAB 4: WORKBOOK & EXPORT */}
           {activeTab === 'workbook' && (
             <div className="settings-tab-pane">
               <div className="workbook-tools-grid">
-                {/* Export Card */}
+                {/* Existing workbook card */}
                 <div className="tool-card">
                   <div className="tool-card-icon bg-blue-light">
-                    <Download size={22} className="text-blue" />
+                    <FileSpreadsheet size={22} className="text-blue" />
                   </div>
+
                   <div className="tool-card-body">
-                    <h5>Export Workbook (.xlsx)</h5>
+                    <h5>Use Existing Workbook</h5>
+
                     <p>
-                      Download the updated Microsoft Excel workbook file containing all 11 core sheets,
-                      suppliers, procurement agreements, price history revisions, and costings.
+                      Select an existing LogPro Excel workbook from your computer.
+                      The workbook must be an .xlsx file containing the required LogPro sheets.
                     </p>
+
                     <button
                       type="button"
                       className="primary-button"
-                      onClick={() => window.logPro.exportWorkbookFile(workbookPath)}
-                      style={{ marginTop: '12px' }}
+                      onClick={handleOpenExistingWorkbook}
+                      disabled={isChangingWorkbook}
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
                     >
-                      <Download size={15} /> Download .xlsx Workbook
+                      <FileSpreadsheet size={15} />
+                      {isChangingWorkbook ? 'Opening…' : 'Open Existing Workbook'}
                     </button>
                   </div>
                 </div>
 
-                {/* Location Card */}
+                {/* New workbook card */}
+                <div className="tool-card">
+                  <div className="tool-card-icon bg-emerald-light">
+                    <Plus size={22} className="text-emerald" />
+                  </div>
+
+                  <div className="tool-card-body">
+                    <h5>Create New Workbook</h5>
+
+                    <p>
+                      Create a new LogPro Excel workbook and choose its folder and filename.
+                      LogPro will create all 11 required worksheets automatically.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={handleCreateNewWorkbook}
+                      disabled={isChangingWorkbook}
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Plus size={15} />
+                      {isChangingWorkbook ? 'Creating…' : 'Create New Workbook'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Export card */}
+                <div className="tool-card">
+                  <div className="tool-card-icon bg-blue-light">
+                    <Download size={22} className="text-blue" />
+                  </div>
+
+                  <div className="tool-card-body">
+                    <h5>Export Workbook (.xlsx)</h5>
+
+                    <p>
+                      Save a copy of the current LogPro workbook as an Excel .xlsx file.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => window.logPro.exportWorkbookFile(workbookPath)}
+                      disabled={!workbookPath || isChangingWorkbook}
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Download size={15} />
+                      Download .xlsx Workbook
+                    </button>
+                  </div>
+                </div>
+
+                {/* Current workbook location card */}
                 <div className="tool-card">
                   <div className="tool-card-icon bg-amber-light">
                     <MapPin size={22} className="text-amber" />
                   </div>
+
                   <div className="tool-card-body">
-                    <h5>Display Workbook Location</h5>
+                    <h5>Current Workbook Location</h5>
+
                     <p>
-                      The current database location used by LogPro to persist all transactions and procurement records:
+                      This is the Excel workbook currently used by LogPro.
                     </p>
+
                     <div className="location-box" style={{ marginTop: '12px' }}>
-                      <code>{workbookPath}</code>
+                      <code>
+                        {workbookPath || 'No workbook selected'}
+                      </code>
+
                       <button
                         type="button"
                         className="location-copy-btn"
                         onClick={() => {
-                          if (navigator.clipboard) {
+                          if (workbookPath && navigator.clipboard) {
                             navigator.clipboard.writeText(workbookPath)
                             setHasCopiedLocation(true)
                             setTimeout(() => setHasCopiedLocation(false), 2000)
                           }
                         }}
+                        disabled={!workbookPath}
                         title="Copy file path"
                       >
-                        {hasCopiedLocation ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
-                        <span>{hasCopiedLocation ? 'Copied' : 'Copy'}</span>
+                        {hasCopiedLocation ? (
+                          <Check size={14} color="#16a34a" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                        <span>
+                          {hasCopiedLocation ? 'Copied' : 'Copy'}
+                        </span>
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
+
+              {workbookMessage && (
+                <p
+                  style={{
+                    marginTop: '14px',
+                    color: '#15803d',
+                    fontWeight: 600,
+                  }}
+                >
+                  {workbookMessage}
+                </p>
+              )}
+
+              {workbookError && (
+                <p
+                  className="error-message"
+                  style={{ marginTop: '14px' }}
+                >
+                  {workbookError}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -2299,6 +2668,73 @@ export function SettingsModal({
                 >
                   <Trash2 size={15} />
                   {isDeletingGrade ? 'Deleting…' : 'Delete Grade'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* BULK DELETE GRADES CONFIRMATION SUB-MODAL */}
+        {isBulkDeleteConfirmOpen && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1100 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isBulkDeleting) {
+                setIsBulkDeleteConfirmOpen(false)
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="alertdialog"
+              aria-modal="true"
+              style={{ width: 'min(100%, 480px)', background: '#ffffff' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 10px', fontSize: '1.2rem', fontWeight: 700, color: '#991b1b' }}>
+                Delete {selectedGradeIdsForBulkDelete.size} Grade{selectedGradeIdsForBulkDelete.size === 1 ? '' : 's'}
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to delete these {selectedGradeIdsForBulkDelete.size} grade definition{selectedGradeIdsForBulkDelete.size === 1 ? '' : 's'}?
+                This cannot be undone.
+              </p>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '10px',
+                  paddingTop: '12px',
+                  borderTop: '1px solid #e2e8f0',
+                }}
+              >
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setIsBulkDeleteConfirmOpen(false)}
+                  disabled={isBulkDeleting}
+                  style={{ padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleConfirmBulkDeleteGrades}
+                  disabled={isBulkDeleting}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#dc2626',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Trash2 size={15} />
+                  {isBulkDeleting ? 'Deleting…' : 'Delete Grades'}
                 </button>
               </div>
             </section>

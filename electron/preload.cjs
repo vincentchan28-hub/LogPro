@@ -38,5 +38,4 @@ const api = {
   },
 }
 
-contextBridge.exposeInMainWorld('logPro', api)
 contextBridge.exposeInMainWorld('logProDesktop', api)

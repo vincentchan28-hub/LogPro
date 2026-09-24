@@ -462,6 +462,7 @@ function App() {
           suppliers={suppliers}
           onOpenAddSupplier={() => openSupplierForm()}
           onRefresh={refreshWorkbookData}
+          onWorkbookChanged={applyWorkbookResult}
         />
 
         {/* Version footer */}

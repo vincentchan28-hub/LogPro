@@ -1642,13 +1642,18 @@ export const webLogPro = {
     const clean = gradeName.trim()
     if (!clean) return { grades: [], error: 'Grade name is required.' }
 
+    // Normalise "Green Logs" / "Burnt Logs" down to "Green" / "Burnt" so grades
+    // are stored the same way as the default species grades, and so they show
+    // up correctly in the Green/Burnt filter buttons.
+    const normalisedProductType = String(productType).replace(/\s*Logs$/i, '').trim()
+
     const cleanSupplierId = supplierId ? String(supplierId).trim() : ''
     const cleanSupplierName = supplierName ? String(supplierName).trim() : ''
 
     const grades = readGradeDefinitions(workbook)
     const exists = grades.some(
       (g) =>
-        g.ProductType === productType &&
+        g.ProductType === normalisedProductType &&
         g.GradeName.toLowerCase() === clean.toLowerCase() &&
         (!speciesName || !g.SpeciesName || g.SpeciesName.toLowerCase() === speciesName.toLowerCase()) &&
         (cleanSupplierId ? String(g.SupplierID) === cleanSupplierId : (!g.SupplierID && !cleanSupplierId)),
@@ -1664,7 +1669,7 @@ export const webLogPro = {
       SupplierID: cleanSupplierId,
       SupplierName: cleanSupplierName,
       SpeciesName: speciesName.trim(),
-      ProductType: productType,
+      ProductType: normalisedProductType,
       GradeName: clean,
       IsStandard: false,
       Notes: notes,
@@ -1703,7 +1708,10 @@ export const webLogPro = {
     }
 
     const target = grades[targetIdx]
-    const updatedProdType = data.productType || target.ProductType
+    // Normalise "Green Logs" / "Burnt Logs" down to "Green" / "Burnt", same as addGrade.
+    const updatedProdType = data.productType
+      ? String(data.productType).replace(/\s*Logs$/i, '').trim()
+      : target.ProductType
     const updatedSpecies = data.speciesName !== undefined ? data.speciesName.trim() : (target.SpeciesName || '')
     const updatedSupplierId = data.supplierId !== undefined ? String(data.supplierId).trim() : (target.SupplierID || '')
     const updatedSupplierName = data.supplierName !== undefined ? String(data.supplierName).trim() : (target.SupplierName || '')
@@ -1984,12 +1992,7 @@ export const webLogPro = {
 }
 
 export function initWebLogPro(): void {
-  const existingLogPro = (window as any).logPro
-
-  // Preserve desktop bridge reference if exposed by Electron's preload.cjs
-  if (existingLogPro && !(window as any).logProDesktop) {
-    ;(window as any).logProDesktop = existingLogPro
-  }
+  const existingLogPro = (window as any).logProDesktop
 
   try {
     if (window.localStorage.getItem(LAST_WORKBOOK_KEY) === null) {
