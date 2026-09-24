@@ -37,6 +37,24 @@ const emptySupplierForm: SupplierForm = {
   notes: '',
 }
 
+type SupplierContactForm = {
+  tempId: string
+  name: string
+  phone: string
+  email: string
+  isPrimary: boolean
+}
+
+let contactRowCounter = 0
+function nextContactRowId(): string {
+  contactRowCounter += 1
+  return `contact-row-${contactRowCounter}`
+}
+
+function makeEmptyContactRow(): SupplierContactForm {
+  return { tempId: nextContactRowId(), name: '', phone: '', email: '', isPrimary: true }
+}
+
 const lastWorkbookKey = 'logpro.lastWorkbook'
 
 const pageList: { id: Page; label: string; description: string }[] = [
@@ -95,6 +113,9 @@ function App() {
   const [isSupplierFormOpen, setIsSupplierFormOpen] = useState(false)
   const [editingSupplierId, setEditingSupplierId] = useState<string | number | null>(null)
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(emptySupplierForm)
+  const [supplierContactForms, setSupplierContactForms] = useState<SupplierContactForm[]>([
+    makeEmptyContactRow(),
+  ])
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
@@ -201,6 +222,7 @@ function App() {
       setEditingSupplierId(null)
       setSupplierForm(emptySupplierForm)
     }
+    setSupplierContactForms([makeEmptyContactRow()])
     setSupplierError('')
     setIsSupplierFormOpen(true)
   }
@@ -209,11 +231,61 @@ function App() {
     setIsSupplierFormOpen(false)
     setEditingSupplierId(null)
     setSupplierForm(emptySupplierForm)
+    setSupplierContactForms([makeEmptyContactRow()])
     setSupplierError('')
   }
 
   function updateSupplierField(field: keyof SupplierForm, value: string) {
     setSupplierForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function addSupplierContactRow() {
+    setSupplierContactForms((current) => [
+      ...current,
+      { tempId: nextContactRowId(), name: '', phone: '', email: '', isPrimary: false },
+    ])
+  }
+
+  function removeSupplierContactRow(tempId: string) {
+    setSupplierContactForms((current) => {
+      if (current.length <= 1) return current
+      const filtered = current.filter((c) => c.tempId !== tempId)
+      if (filtered.length > 0 && !filtered.some((c) => c.isPrimary)) {
+        filtered[0] = { ...filtered[0], isPrimary: true }
+      }
+      return filtered
+    })
+  }
+
+  function updateSupplierContactRow(
+    tempId: string,
+    field: 'name' | 'phone' | 'email',
+    value: string,
+  ) {
+    setSupplierContactForms((current) =>
+      current.map((c) => (c.tempId === tempId ? { ...c, [field]: value } : c)),
+    )
+  }
+
+  function setPrimarySupplierContact(tempId: string) {
+    setSupplierContactForms((current) =>
+      current.map((c) => ({ ...c, isPrimary: c.tempId === tempId })),
+    )
+  }
+
+  function validateNewSupplierContacts(rows: SupplierContactForm[]): SupplierContactForm[] {
+    const filledIn = rows.filter((c) => c.name.trim() || c.phone.trim() || c.email.trim())
+    if (filledIn.length === 0) {
+      throw new Error('Please add at least one contact (name, phone number and email).')
+    }
+    for (const c of filledIn) {
+      if (!c.name.trim() || !c.phone.trim() || !c.email.trim()) {
+        throw new Error(
+          'Each contact needs a name, phone number and email. Remove any empty contact rows.',
+        )
+      }
+    }
+    return filledIn
   }
 
   async function handleSaveSupplier(event: FormEvent<HTMLFormElement>) {
@@ -222,6 +294,11 @@ function App() {
     setSupplierError('')
 
     try {
+      let contactsToSave: SupplierContactForm[] = []
+      if (!editingSupplierId) {
+        contactsToSave = validateNewSupplierContacts(supplierContactForms)
+      }
+
       const result = editingSupplierId
         ? await window.logPro.updateSupplier(
             selectedWorkbook,
@@ -236,6 +313,23 @@ function App() {
       if (result.error) {
         setSupplierError(result.error)
         return
+      }
+
+      if (!editingSupplierId && contactsToSave.length > 0) {
+        const newSupplier = result.suppliers[result.suppliers.length - 1]
+        const newSupplierId = newSupplier?.SupplierID || newSupplier?.SupplierReference
+        for (const contact of contactsToSave) {
+          await window.logPro.saveSupplierContact(selectedWorkbook, {
+            SupplierID: newSupplierId,
+            ContactName: contact.name.trim(),
+            Role: '',
+            PhoneNumber: contact.phone.trim(),
+            MobileNumber: '',
+            Email: contact.email.trim(),
+            Notes: '',
+            IsPrimary: contact.isPrimary,
+          })
+        }
       }
 
       setSuppliers(result.suppliers)
@@ -606,6 +700,114 @@ function App() {
                     rows={3}
                   />
                 </label>
+
+                {!editingSupplierId && (
+                  <div
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      padding: '14px 16px',
+                      marginTop: '4px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <strong style={{ fontSize: '0.95rem' }}>Contacts *</strong>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={addSupplierContactRow}
+                        style={{ width: 'auto', padding: '5px 12px', fontSize: '0.82rem' }}
+                      >
+                        + Add Another Contact
+                      </button>
+                    </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--muted)' }}>
+                      Add at least one contact person for this supplier, and mark one as Primary.
+                    </p>
+
+                    {supplierContactForms.map((contact, index) => (
+                      <div
+                        key={contact.tempId}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr 1fr auto auto',
+                          gap: '8px',
+                          alignItems: 'center',
+                          marginBottom: '8px',
+                        }}
+                      >
+                        <input
+                          type="text"
+                          placeholder="Contact name"
+                          value={contact.name}
+                          onChange={(event) =>
+                            updateSupplierContactRow(contact.tempId, 'name', event.target.value)
+                          }
+                          aria-label={`Contact ${index + 1} name`}
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Phone number"
+                          value={contact.phone}
+                          onChange={(event) =>
+                            updateSupplierContactRow(contact.tempId, 'phone', event.target.value)
+                          }
+                          aria-label={`Contact ${index + 1} phone`}
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email address"
+                          value={contact.email}
+                          onChange={(event) =>
+                            updateSupplierContactRow(contact.tempId, 'email', event.target.value)
+                          }
+                          aria-label={`Contact ${index + 1} email`}
+                        />
+                        <label
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.8rem',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="primary-contact"
+                            checked={contact.isPrimary}
+                            onChange={() => setPrimarySupplierContact(contact.tempId)}
+                            style={{ width: 'auto' }}
+                          />
+                          Primary
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => removeSupplierContactRow(contact.tempId)}
+                          disabled={supplierContactForms.length <= 1}
+                          title="Remove this contact"
+                          style={{
+                            width: 'auto',
+                            padding: '4px 8px',
+                            background: 'transparent',
+                            borderColor: 'transparent',
+                            color: '#94a3b8',
+                            cursor: supplierContactForms.length <= 1 ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {supplierError && (
                   <p className="error-message">{supplierError}</p>

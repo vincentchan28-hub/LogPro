@@ -6,7 +6,6 @@ import {
   RotateCcw,
   CheckCircle2,
   AlertCircle,
-  Settings as SettingsIcon,
   Trash2,
   Table as TableIcon,
   Search,
@@ -62,7 +61,7 @@ type GradeRowState = {
   tempId: string
   ProcurementGradeID?: number | string
   Species: string
-  ProductType: 'Green Logs' | 'Burnt Logs'
+  ProductType: 'Green' | 'Burnt'
   GradeName: string
   OfferedPricePerTonne: string | number
   AgreedPricePerTonne: string | number
@@ -145,7 +144,7 @@ export function ProcurementsTab({
     {
       tempId: getNextRowTempId(),
       Species: 'Radiata Pine',
-      ProductType: 'Green Logs',
+      ProductType: 'Green',
       GradeName: 'K Grade',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
@@ -232,7 +231,7 @@ export function ProcurementsTab({
   // ---------------- Grade rows ----------------
 
   function handleAddGradeRow() {
-    const defaultProduct = 'Green Logs'
+    const defaultProduct = 'Green'
     const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
     const newRow: GradeRowState = {
       tempId: getNextRowTempId(),
@@ -281,10 +280,10 @@ export function ProcurementsTab({
 
   function getGradesFor(
     speciesName?: string,
-    productType?: 'Green Logs' | 'Burnt Logs',
+    productType?: 'Green' | 'Burnt',
     customSupplierId?: string | number,
   ): string[] {
-    const pt = productType || 'Green Logs'
+    const pt = productType || 'Green'
     const targetSuppId =
       customSupplierId !== undefined
         ? String(customSupplierId).trim()
@@ -443,7 +442,7 @@ export function ProcurementsTab({
     setSuccessMsg('')
 
     // Reset grades to 1 clean row
-    const defaultProduct = 'Green Logs'
+    const defaultProduct = 'Green'
     const available = getGradesFor(speciesList[0]?.SpeciesName, defaultProduct)
     setGradeRows([
       {
@@ -509,7 +508,7 @@ export function ProcurementsTab({
           tempId: getNextRowTempId(),
           ProcurementGradeID: g.ProcurementGradeID,
           Species: g.Species,
-          ProductType: g.ProductType as 'Green Logs' | 'Burnt Logs',
+          ProductType: g.ProductType as 'Green' | 'Burnt',
           GradeName: g.GradeName,
           OfferedPricePerTonne: g.OfferedPricePerTonne,
           AgreedPricePerTonne: g.AgreedPricePerTonne,
@@ -523,7 +522,7 @@ export function ProcurementsTab({
         {
           tempId: getNextRowTempId(),
           Species: proc.Species || 'Radiata Pine',
-          ProductType: 'Green Logs',
+          ProductType: 'Green',
           GradeName: 'K Grade',
           OfferedPricePerTonne: '',
           AgreedPricePerTonne: '',
@@ -569,67 +568,28 @@ export function ProcurementsTab({
     setIsDirty(false)
   }
 
-  // Validate form data matching Python legacy logic
+  // Only the supplier is required. Every other field is optional, and grade
+  // rows can be left blank or removed entirely. The one number rule kept:
+  // tonnes typed into a row cannot be negative.
   function validateForm() {
     if (!supplierId) {
       throw new Error('Please select a supplier.')
-    }
-    if (!contactId && supplierContacts.length > 0) {
-      throw new Error('Please select a supplier contact.')
-    }
-    if (!agreementType) {
-      throw new Error('Please select an Agreement Type.')
-    }
-    if (!agreementDetail.trim()) {
-      throw new Error(`Please enter the ${agreementType} detail or ID.`)
-    }
-    if (!STATUSES.includes(status as any)) {
-      throw new Error('Please select a valid procurement status.')
-    }
-    if (!harvestPeriodStart.trim() || !harvestPeriodEnd.trim()) {
-      throw new Error(
-        'Please enter both Harvest Period Start and Harvest Period End.',
-      )
-    }
-
-    // Validate grades
-    if (gradeRows.length === 0) {
-      throw new Error('At least one grade row is required.')
     }
 
     const validatedGrades: Partial<ProcurementGrade>[] = []
     for (const [idx, row] of gradeRows.entries()) {
       const rowNum = idx + 1
-      if (!row.Species.trim()) {
-        throw new Error(`Row ${rowNum}: Please specify species.`)
-      }
-      if (!row.GradeName.trim()) {
-        throw new Error(`Row ${rowNum}: Please select a grade.`)
-      }
       const offered = Number(row.OfferedPricePerTonne) || 0
       const agreedPrice = Number(row.AgreedPricePerTonne) || 0
       const agreedTonnes = Number(row.AgreedTonnes) || 0
       const deliveredTonnes = Number(row.DeliveredTonnes) || 0
+      const gradeLabel = row.GradeName ? ` (${row.GradeName})` : ''
 
-      if (offered < 0) {
-        throw new Error(
-          `Row ${rowNum} (${row.GradeName}): Offered price cannot be negative.`,
-        )
+      if (agreedTonnes < 0) {
+        throw new Error(`Row ${rowNum}${gradeLabel}: Agreed tonnes cannot be negative.`)
       }
-      if (agreedPrice <= 0) {
-        throw new Error(
-          `Row ${rowNum} (${row.GradeName}): Agreed price $/t must be greater than 0.`,
-        )
-      }
-      if (agreedTonnes <= 0) {
-        throw new Error(
-          `Row ${rowNum} (${row.GradeName}): Agreed tonnes must be greater than 0.`,
-        )
-      }
-      if (deliveredTonnes < 0 || deliveredTonnes > agreedTonnes) {
-        throw new Error(
-          `Row ${rowNum} (${row.GradeName}): Delivered tonnes must be between 0 and Agreed Tonnes.`,
-        )
+      if (deliveredTonnes < 0) {
+        throw new Error(`Row ${rowNum}${gradeLabel}: Delivered tonnes cannot be negative.`)
       }
 
       validatedGrades.push({
@@ -1341,7 +1301,6 @@ export function ProcurementsTab({
                         border: '1px solid var(--border)',
                         background: '#fff',
                       }}
-                      required
                     />
                   </div>
                 </div>
@@ -1405,7 +1364,6 @@ export function ProcurementsTab({
                         border: '1px solid var(--border)',
                         background: '#fff',
                       }}
-                      required
                     />
                   </div>
 
@@ -1424,7 +1382,6 @@ export function ProcurementsTab({
                         border: '1px solid var(--border)',
                         background: '#fff',
                       }}
-                      required
                     />
                   </div>
 
@@ -1494,22 +1451,6 @@ export function ProcurementsTab({
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => setIsSettingsOpen(true)}
-                      style={{
-                        width: 'auto',
-                        padding: '5px 10px',
-                        fontSize: '0.8rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                      title="Configure custom species and grades"
-                    >
-                      <SettingsIcon size={14} /> Settings
-                    </button>
                     <button
                       type="button"
                       onClick={handleAddGradeRow}
@@ -1587,7 +1528,7 @@ export function ProcurementsTab({
                                   handleGradeRowChange(
                                     idx,
                                     'ProductType',
-                                    e.target.value as 'Green Logs' | 'Burnt Logs',
+                                    e.target.value as 'Green' | 'Burnt',
                                   )
                                 }
                                 style={{
@@ -1654,7 +1595,6 @@ export function ProcurementsTab({
                               <input
                                 type="number"
                                 step="0.01"
-                                required
                                 placeholder="0.00"
                                 value={row.AgreedPricePerTonne}
                                 onChange={(e) =>
@@ -1676,7 +1616,6 @@ export function ProcurementsTab({
                               <input
                                 type="number"
                                 step="0.01"
-                                required
                                 placeholder="0"
                                 value={row.AgreedTonnes}
                                 onChange={(e) =>
