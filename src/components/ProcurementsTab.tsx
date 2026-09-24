@@ -9,13 +9,13 @@ import {
   Trash2,
   Table as TableIcon,
   Search,
-  Download,
   Building,
-  Calendar,
   Layers,
-  FileCheck,
   Paperclip,
   Upload,
+  ChevronLeft,
+  ChevronRight,
+  Info,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -25,7 +25,6 @@ import {
   type SpeciesDefinition,
   type GradeDefinition,
   AGREEMENT_TYPES,
-  STATUSES,
   PRODUCT_TYPES,
   STANDARD_GRADES,
 } from '../types'
@@ -47,6 +46,9 @@ type ProcurementsTabProps = {
   workbookPath: string
   suppliers: Supplier[]
   onDataChanged: () => void
+  initialSupplierId?: string
+  initialContactId?: string
+  onClearInitialSelection?: () => void
 }
 
 type PanelMode = 'blank' | 'view' | 'edit' | 'new'
@@ -80,6 +82,9 @@ export function ProcurementsTab({
   workbookPath,
   suppliers,
   onDataChanged,
+  initialSupplierId,
+  initialContactId,
+  onClearInitialSelection,
 }: ProcurementsTabProps) {
   // Master data
   const [procurements, setProcurements] = useState<Procurement[]>([])
@@ -93,7 +98,7 @@ export function ProcurementsTab({
 
   // Register view state
   const [registerSearch, setRegisterSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('All')
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   // Selected procurement
   const [selectedProcRef, setSelectedProcRef] = useState<string | null>(null)
@@ -124,7 +129,7 @@ export function ProcurementsTab({
   const [harvestPeriodEnd, setHarvestPeriodEnd] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [status, setStatus] = useState<string>('Draft')
+  const [weeklyEstimatedTonnes, setWeeklyEstimatedTonnes] = useState<string>('')
   const [acceptanceDate, setAcceptanceDate] = useState('')
   const [acceptanceTime, setAcceptanceTime] = useState('')
   const [acceptanceMethod, setAcceptanceMethod] = useState<string>('In Person')
@@ -173,17 +178,27 @@ export function ProcurementsTab({
     }
   }, [workbookPath, species])
 
-  // Load master data on mount & workbook change
+  // Load master data on mount, workbook change & when suppliers update
   useEffect(() => {
     queueMicrotask(loadData)
-  }, [loadData])
+  }, [loadData, suppliers])
 
-  // Filtered contacts for selected supplier
-  const supplierContacts = useMemo(() => {
-    if (!supplierId) return []
-    const sIdStr = String(supplierId).trim()
-    return allContacts.filter((c) => String(c.SupplierID).trim() === sIdStr)
-  }, [allContacts, supplierId])
+  // Handle preselected supplier / contact when navigated from Global Contacts tab
+  useEffect(() => {
+    if (initialSupplierId) {
+      setMode('new')
+      setSelectedProcRef(null)
+      setSupplierId(initialSupplierId)
+      if (initialContactId) {
+        setContactId(initialContactId)
+      } else {
+        const contacts = allContacts.filter((c) => String(c.SupplierID).trim() === initialSupplierId.trim())
+        const primary = contacts.find((c) => c.IsPrimary)
+        setContactId(String(primary ? primary.ContactID : (contacts[0]?.ContactID || '')))
+      }
+      onClearInitialSelection?.()
+    }
+  }, [initialSupplierId, initialContactId, allContacts, onClearInitialSelection])
 
   // Current selected supplier object
   const currentSupplier = useMemo(() => {
@@ -195,6 +210,48 @@ export function ProcurementsTab({
       ) || null
     )
   }, [suppliers, supplierId])
+
+  // Filtered contacts for selected supplier (matches both SupplierID and SupplierReference)
+  const supplierContacts = useMemo(() => {
+    if (!supplierId) return []
+    const sIdStr = String(supplierId).trim()
+    const altIdStr = currentSupplier ? String(currentSupplier.SupplierID || '').trim() : ''
+    const altRefStr = currentSupplier ? String(currentSupplier.SupplierReference || '').trim() : ''
+
+    return allContacts.filter((c) => {
+      const cSuppId = String(c.SupplierID).trim()
+      return (
+        cSuppId === sIdStr ||
+        (altIdStr !== '' && cSuppId === altIdStr) ||
+        (altRefStr !== '' && cSuppId === altRefStr)
+      )
+    })
+  }, [allContacts, supplierId, currentSupplier])
+
+  // Contacts from other suppliers (for picking existing contact across suppliers)
+  const otherContacts = useMemo(() => {
+    if (!supplierId) return allContacts
+    const sIdStr = String(supplierId).trim()
+    const altIdStr = currentSupplier ? String(currentSupplier.SupplierID || '').trim() : ''
+    const altRefStr = currentSupplier ? String(currentSupplier.SupplierReference || '').trim() : ''
+
+    return allContacts.filter((c) => {
+      const cSuppId = String(c.SupplierID).trim()
+      return (
+        cSuppId !== sIdStr &&
+        (!altIdStr || cSuppId !== altIdStr) &&
+        (!altRefStr || cSuppId !== altRefStr)
+      )
+    })
+  }, [allContacts, supplierId, currentSupplier])
+
+  // Auto-select primary contact if supplier is selected and contactId is empty
+  useEffect(() => {
+    if (supplierId && supplierContacts.length > 0 && !contactId) {
+      const primary = supplierContacts.find((c) => c.IsPrimary)
+      setContactId(String(primary ? primary.ContactID : supplierContacts[0].ContactID))
+    }
+  }, [supplierId, supplierContacts, contactId])
 
   // Current selected contact object
   const currentContact = useMemo(() => {
@@ -426,7 +483,7 @@ export function ProcurementsTab({
     setHarvestPeriodEnd('')
     setStartDate('')
     setEndDate('')
-    setStatus('Draft')
+    setWeeklyEstimatedTonnes('')
     setAcceptanceDate('')
     setAcceptanceTime('')
     setAcceptanceMethod('In Person')
@@ -482,7 +539,11 @@ export function ProcurementsTab({
     setHarvestPeriodEnd(proc.HarvestPeriodEnd || '')
     setStartDate(proc.StartDate || '')
     setEndDate(proc.EndDate || '')
-    setStatus(proc.Status || 'Draft')
+    setWeeklyEstimatedTonnes(
+      proc.WeeklyEstimatedTonnes !== undefined && proc.WeeklyEstimatedTonnes !== ''
+        ? String(proc.WeeklyEstimatedTonnes)
+        : '',
+    )
     setAcceptanceDate(proc.AcceptanceDate || '')
     setAcceptanceTime(proc.AcceptanceTime || '')
     setAcceptanceMethod(proc.AcceptanceMethod || 'In Person')
@@ -623,6 +684,13 @@ export function ProcurementsTab({
       const spec = await buildSpecFieldsForNew()
       createdSpecId = spec.createdId
 
+      // Enforce mutual date exclusivity
+      const useAgreementDates = Boolean(startDate.trim() || endDate.trim())
+      const finalHarvestStart = useAgreementDates ? '' : harvestPeriodStart.trim()
+      const finalHarvestEnd = useAgreementDates ? '' : harvestPeriodEnd.trim()
+      const finalAgreementStart = useAgreementDates ? startDate.trim() : ''
+      const finalAgreementEnd = useAgreementDates ? endDate.trim() : ''
+
       const payload: Partial<Procurement> = {
         SupplierID: supplierId,
         ContactID: contactId,
@@ -630,11 +698,13 @@ export function ProcurementsTab({
         AgreementDetail: agreementDetail.trim(),
         Plantation: plantation.trim(),
         Species: species.trim() || validatedGrades[0]?.Species || '',
-        HarvestPeriodStart: harvestPeriodStart.trim(),
-        HarvestPeriodEnd: harvestPeriodEnd.trim(),
-        StartDate: startDate.trim(),
-        EndDate: endDate.trim(),
-        Status: status,
+        HarvestPeriodStart: finalHarvestStart,
+        HarvestPeriodEnd: finalHarvestEnd,
+        StartDate: finalAgreementStart,
+        EndDate: finalAgreementEnd,
+        WeeklyEstimatedTonnes:
+          weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
+        Status: 'Active',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
         AcceptanceMethod: acceptanceMethod,
@@ -683,6 +753,13 @@ export function ProcurementsTab({
     try {
       const validatedGrades = validateForm()
 
+      // Enforce mutual date exclusivity
+      const useAgreementDates = Boolean(startDate.trim() || endDate.trim())
+      const finalHarvestStart = useAgreementDates ? '' : harvestPeriodStart.trim()
+      const finalHarvestEnd = useAgreementDates ? '' : harvestPeriodEnd.trim()
+      const finalAgreementStart = useAgreementDates ? startDate.trim() : ''
+      const finalAgreementEnd = useAgreementDates ? endDate.trim() : ''
+
       const payload: Partial<Procurement> = {
         SupplierID: supplierId,
         ContactID: contactId,
@@ -690,11 +767,13 @@ export function ProcurementsTab({
         AgreementDetail: agreementDetail.trim(),
         Plantation: plantation.trim(),
         Species: species.trim() || validatedGrades[0]?.Species || '',
-        HarvestPeriodStart: harvestPeriodStart.trim(),
-        HarvestPeriodEnd: harvestPeriodEnd.trim(),
-        StartDate: startDate.trim(),
-        EndDate: endDate.trim(),
-        Status: status,
+        HarvestPeriodStart: finalHarvestStart,
+        HarvestPeriodEnd: finalHarvestEnd,
+        StartDate: finalAgreementStart,
+        EndDate: finalAgreementEnd,
+        WeeklyEstimatedTonnes:
+          weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
+        Status: 'Active',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
         AcceptanceMethod: acceptanceMethod,
@@ -845,10 +924,6 @@ export function ProcurementsTab({
   // Filtered procurements for register table
   const filteredProcurements = useMemo(() => {
     return procurements.filter((p) => {
-      // Status filter
-      if (statusFilter !== 'All' && p.Status !== statusFilter) {
-        return false
-      }
       // Search text
       if (!registerSearch.trim()) return true
       const q = registerSearch.toLowerCase()
@@ -867,24 +942,7 @@ export function ProcurementsTab({
         p.AgreementDetail.toLowerCase().includes(q)
       )
     })
-  }, [procurements, statusFilter, registerSearch, suppliers])
-
-  function getStatusColor(st: string): { bg: string; text: string; border: string } {
-    switch (st) {
-      case 'Active':
-        return { bg: '#ecfdf5', text: '#065f46', border: '#a7f3d0' }
-      case 'Accepted':
-        return { bg: '#eff6ff', text: '#1e40af', border: '#bfdbfe' }
-      case 'Waiting for Acceptance':
-        return { bg: '#fffbeb', text: '#92400e', border: '#fde68a' }
-      case 'Completed':
-        return { bg: '#f3f4f6', text: '#374151', border: '#e5e7eb' }
-      case 'Cancelled':
-        return { bg: '#fef2f2', text: '#991b1b', border: '#fecaca' }
-      default: // Draft
-        return { bg: '#f8fafc', text: '#475569', border: '#cbd5e1' }
-    }
-  }
+  }, [procurements, registerSearch, suppliers])
 
   // Tonnes summary for a procurement in register
   function getProcurementTonnes(ref: string) {
@@ -943,22 +1001,58 @@ export function ProcurementsTab({
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => window.logPro.exportWorkbookFile(workbookPath)}
-            style={{
-              width: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '9px 16px',
-            }}
-            title="Download active Excel workbook to your computer"
-          >
-            <Download size={16} /> Export Excel
-          </button>
+        {/* Top-Right Action Buttons: Cancel and Save in edit/new mode */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {(mode === 'new' || mode === 'edit') && (
+            <>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleCancelForm}
+                style={{
+                  width: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 16px',
+                }}
+              >
+                <RotateCcw size={16} /> Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => {
+                  const formEl = document.getElementById('procurement-form') as HTMLFormElement | null
+                  if (formEl) {
+                    formEl.requestSubmit()
+                  }
+                }}
+                style={{
+                  width: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '9px 20px',
+                  fontSize: '0.92rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: 'var(--primary)',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+                }}
+              >
+                <Save size={16} />
+                {isSaving
+                  ? 'Saving...'
+                  : mode === 'edit'
+                  ? 'Save Changes'
+                  : 'Save Procurement'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -992,55 +1086,407 @@ export function ProcurementsTab({
         </div>
       )}
 
-      {/* Main split grid: left panel vs Register */}
+      {/* Main split grid: Left Register Sidebar vs Right Workspace */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.45fr) minmax(0, 1fr)',
-          gap: '24px',
+          gridTemplateColumns: isSidebarCollapsed ? '48px minmax(0, 1fr)' : '340px minmax(0, 1fr)',
+          gap: '20px',
           alignItems: 'start',
+          transition: 'grid-template-columns 0.2s ease',
         }}
       >
-        {/* ==================== LEFT PANEL ==================== */}
-
-        {/* Blank: only the add button */}
-        {mode === 'blank' && (
+        {/* ==================== LEFT: PROCUREMENT REGISTER ==================== */}
+        {isSidebarCollapsed ? (
           <div
             style={{
               background: 'var(--card-bg)',
               border: '1px solid var(--border)',
               borderRadius: '12px',
-              padding: '24px',
-              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
-              minHeight: '240px',
+              padding: '12px 6px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: '12px',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
+              position: 'sticky',
+              top: '16px',
             }}
           >
             <button
               type="button"
-              onClick={handleStartNew}
+              onClick={() => setIsSidebarCollapsed(false)}
+              title="Expand register"
               style={{
-                width: 'auto',
+                background: 'var(--primary-soft)',
+                border: '1px solid #bfdbfe',
+                borderRadius: '6px',
+                color: 'var(--primary)',
+                cursor: 'pointer',
+                padding: '6px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '14px 26px',
-                fontSize: '1rem',
+                justifyContent: 'center',
+              }}
+            >
+              <ChevronRight size={18} />
+            </button>
+            <div
+              onClick={() => setIsSidebarCollapsed(false)}
+              title="Click to view register"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                color: 'var(--muted)',
+                fontSize: '0.72rem',
+              }}
+            >
+              <TableIcon size={18} color="var(--primary)" />
+              <span style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>
+                {filteredProcurements.length}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '16px',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
+              position: 'sticky',
+              top: '16px',
+              maxHeight: 'calc(100vh - 32px)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Header: Title + count + collapse button */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <TableIcon size={18} color="var(--primary)" />
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
+                  Register
+                </h3>
+                <span
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: 'var(--primary-soft)',
+                    color: 'var(--primary-dark)',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  {filteredProcurements.length}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(true)}
+                title="Collapse register"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  color: '#64748b',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            </div>
+
+            {/* Quick Action: New Procurement */}
+            <button
+              type="button"
+              onClick={handleStartNew}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                marginBottom: '10px',
+                fontSize: '0.86rem',
                 fontWeight: 700,
                 color: '#ffffff',
                 background: 'var(--primary)',
                 border: 'none',
                 borderRadius: '8px',
                 cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
               }}
             >
-              <Plus size={18} /> Add New Procurement
+              <Plus size={16} /> New Procurement
             </button>
+
+            {/* Register Search (Full Width) */}
+            <div style={{ display: 'flex', marginBottom: '10px' }}>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: 'absolute',
+                    left: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#94a3b8',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Search agreements, ref, supplier..."
+                  value={registerSearch}
+                  onChange={(e) => setRegisterSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '7px 8px 7px 28px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Procurements List */}
+            {filteredProcurements.length === 0 ? (
+              <div
+                style={{
+                  padding: '24px 12px',
+                  textAlign: 'center',
+                  border: '1px dashed var(--border)',
+                  borderRadius: '8px',
+                  color: 'var(--muted)',
+                  fontSize: '0.82rem',
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 600 }}>No agreements found.</p>
+                <p style={{ margin: '4px 0 0', fontSize: '0.76rem' }}>
+                  Try adjusting search or status.
+                </p>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  overflowY: 'auto',
+                  flex: 1,
+                  paddingRight: '2px',
+                }}
+              >
+                {filteredProcurements.map((proc) => {
+                  const isSelected = selectedProcRef === proc.ProcurementRef
+                  const tonnes = getProcurementTonnes(proc.ProcurementRef)
+                  const suppName =
+                    suppliers.find(
+                      (s) =>
+                        String(s.SupplierID) === String(proc.SupplierID) ||
+                        String(s.SupplierReference) === String(proc.SupplierID),
+                    )?.SupplierName || `Supplier #${proc.SupplierID}`
+
+                  const harvestRange = proc.HarvestPeriodStart
+                    ? `${proc.HarvestPeriodStart}${proc.HarvestPeriodEnd ? ` – ${proc.HarvestPeriodEnd}` : ''}`
+                    : proc.StartDate
+                    ? `${proc.StartDate}${proc.EndDate ? ` – ${proc.EndDate}` : ''}`
+                    : ''
+
+                  const volumeDisplay =
+                    tonnes.agreed > 0
+                      ? `${tonnes.agreed.toLocaleString(undefined, { maximumFractionDigits: 1 })} t`
+                      : '0 t'
+
+                  return (
+                    <div
+                      key={proc.ProcurementRef}
+                      onClick={() => handleSelectProcurement(proc)}
+                      style={{
+                        border: isSelected
+                          ? '2px solid var(--primary)'
+                          : '1px solid var(--border)',
+                        background: isSelected ? 'var(--primary-soft)' : '#ffffff',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {/* Line 1: Ref + Spec Icon + Volume */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <strong
+                            style={{
+                              fontSize: '0.92rem',
+                              color: isSelected ? 'var(--primary-dark)' : 'var(--text)',
+                            }}
+                          >
+                            {proc.ProcurementRef}
+                          </strong>
+                          {proc.LogSpecFileID && (
+                            <span
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handleOpenSpec(proc.LogSpecFileID || '')
+                              }}
+                              title={`Log Spec: ${proc.LogSpecFileName || 'attached'} (click to open)`}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                color: 'var(--primary)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Paperclip size={13} />
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
+                          {volumeDisplay}
+                        </span>
+                      </div>
+
+                      {/* Line 2: Supplier Name */}
+                      <div
+                        style={{
+                          fontSize: '0.88rem',
+                          fontWeight: 600,
+                          color: '#0f172a',
+                          marginBottom: '4px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={suppName}
+                      >
+                        {suppName}
+                      </div>
+
+                      {/* Line 3: Procured Volume · Species · Harvest Date Range */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '0.76rem',
+                          color: '#64748b',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, color: '#0369a1' }}>
+                          {volumeDisplay}
+                        </span>
+                        <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
+                        <span
+                          style={{
+                            maxWidth: '110px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={proc.Species || 'No species'}
+                        >
+                          {proc.Species || '—'}
+                        </span>
+                        {harvestRange && (
+                          <>
+                            <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
+                            <span
+                              style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={`Harvest / Commitment: ${harvestRange}`}
+                            >
+                              {harvestRange}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
+
+        {/* ==================== RIGHT: MAIN WORKSPACE (VIEW / EDIT / NEW) ==================== */}
+        <div style={{ minWidth: 0, width: '100%' }}>
+          {/* Blank: select prompt + add button */}
+          {mode === 'blank' && (
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '48px 24px',
+                boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
+                minHeight: '360px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  background: 'var(--primary-soft)',
+                  color: 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '16px',
+                }}
+              >
+                <FileSpreadsheet size={28} />
+              </div>
+              <h3 style={{ margin: '0 0 8px', fontSize: '1.25rem', color: 'var(--text)' }}>
+                No Procurement Selected
+              </h3>
+              <p
+                style={{
+                  margin: 0,
+                  color: 'var(--muted)',
+                  maxWidth: '460px',
+                  fontSize: '0.94rem',
+                  lineHeight: 1.6,
+                }}
+              >
+                Select a procurement from the register on the left to view, or click <strong>+ New Procurement</strong> on the left panel to add a new procurement.
+              </p>
+            </div>
+          )}
 
         {/* Viewing a saved procurement (read-only) */}
         {mode === 'view' && selectedProcurement && (
@@ -1067,363 +1513,625 @@ export function ProcurementsTab({
             }}
           >
             <form
+              id="procurement-form"
               onSubmit={mode === 'edit' ? handleUpdateSelected : handleSaveNew}
               onChange={() => setIsDirty(true)}
             >
-              {/* Section 1: Supplier & Contact */}
-              <div
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  padding: '16px',
-                  marginBottom: '18px',
-                  background: '#fbfdff',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Building size={18} color="var(--primary)" />
-                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                      1. Supplier & Contact
-                    </h3>
-                  </div>
-                  {supplierId && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => setIsAddContactOpen(true)}
-                      style={{
-                        width: 'auto',
-                        padding: '4px 10px',
-                        fontSize: '0.8rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Plus size={14} /> Add Contact
-                    </button>
-                  )}
-                </div>
+              {/* Section 1: Procurement & Agreement Details (3-Row Structure) */}
+              {(() => {
+                const hasAgreementDates = Boolean(startDate.trim() || endDate.trim())
+                const hasHarvestDates = Boolean(harvestPeriodStart.trim() || harvestPeriodEnd.trim())
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                    gap: '12px',
-                    marginBottom: '14px',
-                  }}
-                >
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Supplier *
-                    </label>
-                    <select
-                      value={supplierId}
-                      onChange={(e) => {
-                        const newSuppId = e.target.value
-                        setSupplierId(newSuppId)
-                        if (newSuppId) {
-                          const contacts = allContacts.filter((c) => String(c.SupplierID).trim() === newSuppId.trim())
-                          const primary = contacts.find((c) => c.IsPrimary)
-                          setContactId(String(primary ? primary.ContactID : (contacts[0]?.ContactID || '')))
-                        } else {
-                          setContactId('')
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                      required
-                    >
-                      <option value="">-- Select Supplier --</option>
-                      {suppliers.map((s) => {
-                        const idVal = String(s.SupplierID || s.SupplierReference || '')
-                        return (
-                          <option key={idVal} value={idVal}>
-                            {s.SupplierName} {s.SupplierReference ? `(${s.SupplierReference})` : ''}
-                          </option>
-                        )
-                      })}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Contact Person *
-                    </label>
-                    <select
-                      value={contactId}
-                      onChange={(e) => setContactId(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                      disabled={!supplierId || supplierContacts.length === 0}
-                    >
-                      <option value="">
-                        {!supplierId
-                          ? '-- Select supplier first --'
-                          : supplierContacts.length === 0
-                          ? '-- No contacts for supplier --'
-                          : '-- Select Contact --'}
-                      </option>
-                      {supplierContacts.map((c) => (
-                        <option key={String(c.ContactID)} value={String(c.ContactID)}>
-                          {c.ContactName} {c.Role ? `(${c.Role})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Readonly info strip */}
-                {currentSupplier && (
+                return (
                   <div
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                      gap: '10px',
-                      padding: '10px 12px',
-                      background: '#f1f5f9',
-                      borderRadius: '6px',
-                      fontSize: '0.82rem',
-                      color: '#334155',
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      padding: '18px',
+                      marginBottom: '18px',
+                      background: '#fbfdff',
                     }}
                   >
-                    <div>
-                      <span style={{ color: '#64748b', display: 'block' }}>Address:</span>
-                      <strong>{currentSupplier.Address || '—'}</strong>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '16px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Building size={18} color="var(--primary)" />
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)', fontWeight: 700 }}>
+                          1. Procurement &amp; Agreement Details
+                        </h3>
+                      </div>
+                      {supplierId ? (
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setIsAddContactOpen(true)}
+                          style={{
+                            width: 'auto',
+                            padding: '4px 10px',
+                            fontSize: '0.8rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title={`Add contact for ${currentSupplier?.SupplierName || 'supplier'}`}
+                        >
+                          <Plus size={14} /> Add Contact
+                        </button>
+                      ) : null}
                     </div>
-                    <div>
-                      <span style={{ color: '#64748b', display: 'block' }}>ABN:</span>
-                      <strong>{currentSupplier.ABN || '—'}</strong>
+
+                    {/* Row 1: 4 columns -> Supplier *, Contact Person, Agreement Type *, Agreement Detail / Code * */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                        gap: '12px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Supplier *
+                        </label>
+                        <select
+                          value={supplierId}
+                          onChange={(e) => {
+                            const newSuppId = e.target.value
+                            setSupplierId(newSuppId)
+                            if (newSuppId) {
+                              const supp = suppliers.find(
+                                (s) =>
+                                  String(s.SupplierID) === newSuppId ||
+                                  String(s.SupplierReference) === newSuppId,
+                              )
+                              const sIdStr = String(newSuppId).trim()
+                              const altIdStr = supp ? String(supp.SupplierID || '').trim() : ''
+                              const altRefStr = supp ? String(supp.SupplierReference || '').trim() : ''
+
+                              const contacts = allContacts.filter((c) => {
+                                const cSuppId = String(c.SupplierID).trim()
+                                return (
+                                  cSuppId === sIdStr ||
+                                  (altIdStr !== '' && cSuppId === altIdStr) ||
+                                  (altRefStr !== '' && cSuppId === altRefStr)
+                                )
+                              })
+                              const primary = contacts.find((c) => c.IsPrimary)
+                              setContactId(String(primary ? primary.ContactID : (contacts[0]?.ContactID || '')))
+                            } else {
+                              setContactId('')
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                          required
+                        >
+                          <option value="">-- Select Supplier --</option>
+                          {suppliers.map((s) => {
+                            const idVal = String(s.SupplierID || s.SupplierReference || '')
+                            return (
+                              <option key={idVal} value={idVal}>
+                                {s.SupplierName} {s.SupplierReference ? `(${s.SupplierReference})` : ''}
+                              </option>
+                            )
+                          })}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Contact Person
+                        </label>
+                        <select
+                          value={contactId}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (!val) {
+                              setContactId('')
+                              return
+                            }
+                            const selectedC = allContacts.find((c) => String(c.ContactID) === val)
+                            if (selectedC) {
+                              setContactId(String(selectedC.ContactID))
+                              if (String(selectedC.SupplierID).trim() !== String(supplierId).trim()) {
+                                setSupplierId(String(selectedC.SupplierID))
+                              }
+                            } else {
+                              setContactId(val)
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        >
+                          {!supplierId ? (
+                            <>
+                              <option value="">-- Pick Contact --</option>
+                              {allContacts.map((c) => {
+                                const supp = suppliers.find(
+                                  (s) =>
+                                    String(s.SupplierID) === String(c.SupplierID) ||
+                                    String(s.SupplierReference) === String(c.SupplierID),
+                                )
+                                return (
+                                  <option key={String(c.ContactID)} value={String(c.ContactID)}>
+                                    {c.ContactName} {c.Role ? `(${c.Role})` : ''} — {supp?.SupplierName || `Supplier #${c.SupplierID}`} {c.IsPrimary ? '★' : ''}
+                                  </option>
+                                )
+                              })}
+                            </>
+                          ) : (
+                            <>
+                              <option value="">
+                                {supplierContacts.length === 0
+                                  ? '-- No contacts for supplier yet --'
+                                  : '-- Select Contact --'}
+                              </option>
+                              {supplierContacts.length > 0 && (
+                                <optgroup label={`${currentSupplier?.SupplierName || 'Supplier'} Contacts`}>
+                                  {supplierContacts.map((c) => (
+                                    <option key={String(c.ContactID)} value={String(c.ContactID)}>
+                                      {c.ContactName} {c.Role ? `(${c.Role})` : ''} {c.IsPrimary ? '★ (Primary)' : ''}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {otherContacts.length > 0 && (
+                                <optgroup label="── Other Contacts ──">
+                                  {otherContacts.map((c) => {
+                                    const supp = suppliers.find(
+                                      (s) =>
+                                        String(s.SupplierID) === String(c.SupplierID) ||
+                                        String(s.SupplierReference) === String(c.SupplierID),
+                                    )
+                                    return (
+                                      <option key={String(c.ContactID)} value={String(c.ContactID)}>
+                                        {c.ContactName} {c.Role ? `(${c.Role})` : ''} — {supp?.SupplierName || `Supplier #${c.SupplierID}`}
+                                      </option>
+                                    )
+                                  })}
+                                </optgroup>
+                              )}
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Agreement Type *
+                        </label>
+                        <select
+                          value={agreementType}
+                          onChange={(e) => setAgreementType(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                          required
+                        >
+                          {AGREEMENT_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          {agreementType} Detail / Code *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={`Enter ${agreementType} identifier (e.g. Coupe 14A)`}
+                          value={agreementDetail}
+                          onChange={(e) => setAgreementDetail(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <span style={{ color: '#64748b', display: 'block' }}>Payment Terms:</span>
-                      <strong>{currentSupplier.PaymentTerms || '—'}</strong>
+
+                    {/* Row 2: 3 columns -> Plantation Name, Species, Weekly Estimated Delivery */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '12px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Plantation Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Green Triangle Estate, Pine Ridge"
+                          value={plantation}
+                          onChange={(e) => setPlantation(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Species
+                        </label>
+                        <select
+                          value={species}
+                          onChange={(e) => setSpecies(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        >
+                          <option value="">-- Select Species --</option>
+                          {speciesList.map((sp) => (
+                            <option key={sp.SpeciesDefinitionID || sp.SpeciesName} value={sp.SpeciesName}>
+                              {sp.SpeciesName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Weekly Estimated Delivery (tonnes)
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            placeholder="e.g. 250"
+                            value={weeklyEstimatedTonnes}
+                            onChange={(e) => setWeeklyEstimatedTonnes(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 50px 8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: '#fff',
+                              fontWeight: 700,
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: '#64748b',
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            t / wk
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    {currentContact && (
-                      <>
+
+                    {/* Row 3: 4 columns -> ALL DATES ON THE SAME ROW */}
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                          gap: '12px',
+                        }}
+                      >
                         <div>
-                          <span style={{ color: '#64748b', display: 'block' }}>Role:</span>
-                          <strong>{currentContact.Role || '—'}</strong>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
+                              Agreement Start Date
+                            </label>
+                            {startDate && (
+                              <button
+                                type="button"
+                                onClick={() => setStartDate('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={startDate}
+                            disabled={hasHarvestDates}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
+                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
+                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
+                              Agreement End Date
+                            </label>
+                            {endDate && (
+                              <button
+                                type="button"
+                                onClick={() => setEndDate('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={endDate}
+                            disabled={hasHarvestDates}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
+                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
+                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
+                              Harvest Period Start
+                            </label>
+                            {harvestPeriodStart && (
+                              <button
+                                type="button"
+                                onClick={() => setHarvestPeriodStart('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={harvestPeriodStart}
+                            disabled={hasAgreementDates}
+                            onChange={(e) => setHarvestPeriodStart(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
+                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
+                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
+                              Harvest Period End
+                            </label>
+                            {harvestPeriodEnd && (
+                              <button
+                                type="button"
+                                onClick={() => setHarvestPeriodEnd('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={harvestPeriodEnd}
+                            disabled={hasAgreementDates}
+                            onChange={(e) => setHarvestPeriodEnd(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
+                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
+                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Rule note directly under row 3 */}
+                      <div
+                        style={{
+                          marginTop: '10px',
+                          padding: '6px 10px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          color: '#1e40af',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Info size={15} style={{ flexShrink: 0, color: '#2563eb' }} />
+                        <span>
+                          <strong>Date Range Rule:</strong> Enter <em>either</em> Agreement Dates <em>or</em> Harvest Period. When one is entered, the other is disabled so the Home tab can schedule and tally your expected weekly delivery volume accurately.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Readonly info strip */}
+                    {currentSupplier && (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                          gap: '10px',
+                          padding: '10px 12px',
+                          background: '#f1f5f9',
+                          borderRadius: '6px',
+                          fontSize: '0.82rem',
+                          color: '#334155',
+                          marginTop: '12px',
+                        }}
+                      >
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Supplier:</span>
+                          <strong>{currentSupplier.SupplierName}</strong>
                         </div>
                         <div>
-                          <span style={{ color: '#64748b', display: 'block' }}>Phone:</span>
-                          <strong>{currentContact.PhoneNumber || currentContact.MobileNumber || '—'}</strong>
+                          <span style={{ color: '#64748b', display: 'block' }}>Address:</span>
+                          <strong>{currentSupplier.Address || '—'}</strong>
                         </div>
                         <div>
-                          <span style={{ color: '#64748b', display: 'block' }}>Email:</span>
-                          <strong>{currentContact.Email || '—'}</strong>
+                          <span style={{ color: '#64748b', display: 'block' }}>ABN:</span>
+                          <strong>{currentSupplier.ABN || '—'}</strong>
                         </div>
-                      </>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Payment Terms:</span>
+                          <strong>{currentSupplier.PaymentTerms || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Company Phone:</span>
+                          <strong>{currentSupplier.Phone || currentContact?.PhoneNumber || currentContact?.MobileNumber || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Company Email:</span>
+                          <strong>{currentSupplier.Email || currentContact?.Email || '—'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block' }}>Contact Person:</span>
+                          <strong>
+                            {currentContact ? (
+                              <>
+                                {currentContact.ContactName}
+                                {currentContact.IsPrimary && (
+                                  <span
+                                    style={{
+                                      marginLeft: '4px',
+                                      fontSize: '0.72rem',
+                                      color: '#047857',
+                                      backgroundColor: '#dcfce7',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    Primary
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              '—'
+                            )}
+                          </strong>
+                        </div>
+                        {currentContact && (
+                          <>
+                            <div>
+                              <span style={{ color: '#64748b', display: 'block' }}>Contact Role:</span>
+                              <strong>{currentContact.Role || '—'}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748b', display: 'block' }}>Contact Phone:</span>
+                              <strong>{currentContact.PhoneNumber || currentContact.MobileNumber || '—'}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748b', display: 'block' }}>Contact Email:</span>
+                              <strong>{currentContact.Email || '—'}</strong>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                )
+              })()}
 
-              {/* Section 2: Agreement */}
-              <div
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  padding: '16px',
-                  marginBottom: '18px',
-                  background: '#fbfdff',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <FileCheck size={18} color="var(--primary)" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    2. Agreement Details
-                  </h3>
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 2fr',
-                    gap: '12px',
-                  }}
-                >
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Agreement Type *
-                    </label>
-                    <select
-                      value={agreementType}
-                      onChange={(e) => setAgreementType(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                      required
-                    >
-                      {AGREEMENT_TYPES.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      {agreementType} Detail / Code *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={`Enter ${agreementType} identifier (e.g. Coupe 14A, Block East)`}
-                      value={agreementDetail}
-                      onChange={(e) => setAgreementDetail(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Plantation & Harvest */}
-              <div
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  padding: '16px',
-                  marginBottom: '18px',
-                  background: '#fbfdff',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <Calendar size={18} color="var(--primary)" />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    3. Plantation & Harvest Period
-                  </h3>
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '12px',
-                  }}
-                >
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Plantation Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Green Triangle Estate"
-                      value={plantation}
-                      onChange={(e) => setPlantation(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Harvest Period Start *
-                    </label>
-                    <input
-                      type="date"
-                      value={harvestPeriodStart}
-                      onChange={(e) => setHarvestPeriodStart(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Harvest Period End *
-                    </label>
-                    <input
-                      type="date"
-                      value={harvestPeriodEnd}
-                      onChange={(e) => setHarvestPeriodEnd(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Agreement Start Date
-                    </label>
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Agreement End Date
-                    </label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid var(--border)',
-                        background: '#fff',
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 4: Grades, Products, Prices & Tonnes (Interactive Table) */}
+              {/* Section 5: Grades, Products, Prices & Tonnes (Interactive Table) */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -1446,7 +2154,7 @@ export function ProcurementsTab({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Layers size={18} color="var(--primary)" />
                     <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                      4. Grades, Products, Prices & Tonnes
+                      2. Grades, Products, Prices &amp; Tonnes
                     </h3>
                   </div>
 
@@ -1717,7 +2425,7 @@ export function ProcurementsTab({
                 </div>
               </div>
 
-              {/* Section 5: Log Specification */}
+              {/* Section 6: Log Specification */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -1730,7 +2438,7 @@ export function ProcurementsTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Paperclip size={18} color="var(--primary)" />
                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    5. Log Specification
+                    3. Log Specification File (Optional)
                   </h3>
                 </div>
 
@@ -1837,7 +2545,7 @@ export function ProcurementsTab({
                 </div>
               </div>
 
-              {/* Section 6: General Notes */}
+              {/* Section 4: General Notes */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -1850,7 +2558,7 @@ export function ProcurementsTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                   <FileSpreadsheet size={18} color="var(--primary)" />
                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    6. General Notes
+                    4. General Notes
                   </h3>
                 </div>
 
@@ -1875,35 +2583,31 @@ export function ProcurementsTab({
                 </div>
               </div>
 
-              {/* Bottom Actions Bar */}
+              {/* Bottom Actions Bar - Right Aligned */}
               <div
                 style={{
                   display: 'flex',
                   gap: '12px',
                   alignItems: 'center',
+                  justifyContent: 'flex-end',
                   flexWrap: 'wrap',
-                  paddingTop: '8px',
+                  paddingTop: '16px',
                   borderTop: '1px solid var(--border)',
                 }}
               >
                 <button
-                  type="submit"
-                  disabled={isSaving}
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleCancelForm}
                   style={{
                     width: 'auto',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '12px 24px',
-                    fontSize: '0.95rem',
+                    gap: '6px',
+                    padding: '11px 18px',
                   }}
                 >
-                  <Save size={18} />
-                  {isSaving
-                    ? 'Saving...'
-                    : mode === 'edit'
-                    ? 'Save Changes'
-                    : 'Save Procurement'}
+                  <RotateCcw size={16} /> Cancel
                 </button>
 
                 {mode === 'edit' && (
@@ -1917,7 +2621,7 @@ export function ProcurementsTab({
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      padding: '12px 20px',
+                      padding: '11px 20px',
                     }}
                     title="Save current details as a brand new agreement"
                   >
@@ -1926,284 +2630,29 @@ export function ProcurementsTab({
                 )}
 
                 <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={handleCancelForm}
+                  type="submit"
+                  disabled={isSaving}
                   style={{
                     width: 'auto',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '12px 18px',
+                    gap: '8px',
+                    padding: '11px 24px',
+                    fontSize: '0.95rem',
+                    fontWeight: 700,
                   }}
                 >
-                  <RotateCcw size={16} /> Cancel
+                  <Save size={18} />
+                  {isSaving
+                    ? 'Saving...'
+                    : mode === 'edit'
+                    ? 'Save Changes'
+                    : 'Save Procurement'}
                 </button>
               </div>
             </form>
           </div>
         )}
-
-        {/* ==================== RIGHT: PROCUREMENT REGISTER ==================== */}
-        <div
-          style={{
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '14px',
-              flexWrap: 'wrap',
-              gap: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <TableIcon size={20} color="var(--primary)" />
-              <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>
-                Procurement Register
-              </h3>
-              <span
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  background: 'var(--primary-soft)',
-                  color: 'var(--primary-dark)',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                }}
-              >
-                {filteredProcurements.length}
-              </span>
-            </div>
-          </div>
-
-          {/* Register Search & Filters */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search
-                size={16}
-                style={{
-                  position: 'absolute',
-                  left: '10px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: '#94a3b8',
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Search Ref, Supplier, Coupe, Plantation..."
-                value={registerSearch}
-                onChange={(e) => setRegisterSearch(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px 8px 32px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border)',
-                  fontSize: '0.85rem',
-                }}
-              />
-            </div>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid var(--border)',
-                background: '#fff',
-                fontSize: '0.85rem',
-                fontWeight: 600,
-              }}
-            >
-              <option value="All">All Statuses</option>
-              {STATUSES.map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Procurements List / Table */}
-          {filteredProcurements.length === 0 ? (
-            <div
-              style={{
-                padding: '36px 16px',
-                textAlign: 'center',
-                border: '2px dashed var(--border)',
-                borderRadius: '8px',
-                color: 'var(--muted)',
-              }}
-            >
-              <p style={{ margin: 0, fontWeight: 600 }}>No procurements match this criteria.</p>
-              <p style={{ margin: '6px 0 0', fontSize: '0.85rem' }}>
-                Create an agreement or clear the search filter.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '720px', overflowY: 'auto' }}>
-              {filteredProcurements.map((proc) => {
-                const isSelected = selectedProcRef === proc.ProcurementRef
-                const stColor = getStatusColor(proc.Status)
-                const tonnes = getProcurementTonnes(proc.ProcurementRef)
-                const percentDelivered =
-                  tonnes.agreed > 0
-                    ? Math.min(100, Math.round((tonnes.delivered / tonnes.agreed) * 100))
-                    : 0
-                const suppName =
-                  suppliers.find(
-                    (s) =>
-                      String(s.SupplierID) === String(proc.SupplierID) ||
-                      String(s.SupplierReference) === String(proc.SupplierID),
-                  )?.SupplierName || `Supplier #${proc.SupplierID}`
-
-                return (
-                  <div
-                    key={proc.ProcurementRef}
-                    onClick={() => handleSelectProcurement(proc)}
-                    style={{
-                      border: isSelected
-                        ? '2px solid var(--primary)'
-                        : '1px solid var(--border)',
-                      background: isSelected ? 'var(--primary-soft)' : '#ffffff',
-                      borderRadius: '8px',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <strong style={{ fontSize: '1rem', color: 'var(--primary-dark)' }}>
-                          {proc.ProcurementRef}
-                        </strong>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: '12px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            background: stColor.bg,
-                            color: stColor.text,
-                            border: `1px solid ${stColor.border}`,
-                          }}
-                        >
-                          {proc.Status}
-                        </span>
-                        {proc.LogSpecFileID && (
-                          <span
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => {
-                              event.stopPropagation()
-                              void handleOpenSpec(proc.LogSpecFileID || '')
-                            }}
-                            title={`Log Specification: ${proc.LogSpecFileName || 'attached'} (double-click to open)`}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              color: '#0284c7',
-                              cursor: 'pointer',
-                              padding: '2px',
-                            }}
-                          >
-                            <Paperclip size={16} />
-                          </span>
-                        )}
-                      </div>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        {proc.AgreementType}: {proc.AgreementDetail || '—'}
-                      </span>
-                    </div>
-
-                    <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>
-                      {suppName}
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '12px',
-                        fontSize: '0.8rem',
-                        color: '#475569',
-                        marginBottom: '8px',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      {proc.Plantation && (
-                        <span>
-                          Plantation: <strong>{proc.Plantation}</strong>
-                        </span>
-                      )}
-                      {proc.Species && (
-                        <span>
-                          Species: <strong>{proc.Species}</strong>
-                        </span>
-                      )}
-                      {proc.HarvestPeriodStart && (
-                        <span>
-                          Harvest: {proc.HarvestPeriodStart} to {proc.HarvestPeriodEnd || '—'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Delivery Progress Bar */}
-                    <div style={{ marginTop: '6px' }}>
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          fontSize: '0.78rem',
-                          marginBottom: '3px',
-                        }}
-                      >
-                        <span>
-                          Delivered: <strong>{tonnes.delivered} t</strong> / {tonnes.agreed} t
-                        </span>
-                        <span style={{ color: tonnes.remaining > 0 ? '#0284c7' : '#16a34a', fontWeight: 700 }}>
-                          {tonnes.remaining} t left ({percentDelivered}%)
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          height: '6px',
-                          background: '#e2e8f0',
-                          borderRadius: '3px',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: `${percentDelivered}%`,
-                            height: '100%',
-                            background:
-                              percentDelivered >= 100
-                                ? '#16a34a'
-                                : 'linear-gradient(90deg, #0284c7, #38bdf8)',
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
       </div>
 
@@ -2222,9 +2671,17 @@ export function ProcurementsTab({
         onClose={() => setIsAddContactOpen(false)}
         workbookPath={workbookPath}
         supplier={currentSupplier}
+        suppliers={suppliers}
+        onContactSaved={(newId, newSuppId) => {
+          loadData()
+          if (newSuppId) setSupplierId(String(newSuppId))
+          setContactId(String(newId))
+          onDataChanged?.()
+        }}
         onContactAdded={(newId) => {
           loadData()
           setContactId(String(newId))
+          onDataChanged?.()
         }}
       />
 

@@ -1,6 +1,7 @@
 export type Page =
   | 'home'
   | 'procurements'
+  | 'contacts'
   | 'priceHistory'
   | 'suppliers'
   | 'costing'
@@ -50,6 +51,7 @@ export type Procurement = {
   HarvestPeriodEnd: string
   StartDate: string
   EndDate: string
+  WeeklyEstimatedTonnes?: number | string
   Status: 'Draft' | 'Waiting for Acceptance' | 'Accepted' | 'Active' | 'Completed' | 'Cancelled' | string
   AcceptanceDate: string
   AcceptanceTime: string

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import {
   Settings,
   Building,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import {
   type Supplier,
+  type SupplierContact,
   type SpeciesDefinition,
   type GradeDefinition,
   type WorkbookResult,
@@ -139,6 +140,23 @@ export function SettingsModal({
   const [supplierEditError, setSupplierEditError] = useState('')
   const [supplierEditSuccess, setSupplierEditSuccess] = useState('')
   const [isSavingSupplier, setIsSavingSupplier] = useState(false)
+  const [supplierContacts, setSupplierContacts] = useState<SupplierContact[]>([])
+
+  const loadSupplierContacts = useCallback(() => {
+    if (!workbookPath) return
+    try {
+      const contacts = window.logPro.getSupplierContacts(workbookPath)
+      setSupplierContacts(contacts || [])
+    } catch {
+      // ignore
+    }
+  }, [workbookPath])
+
+  useEffect(() => {
+    if (isOpen) {
+      queueMicrotask(loadSupplierContacts)
+    }
+  }, [isOpen, workbookPath, suppliers, loadSupplierContacts])
 
   // Delete mode toggle for Grades and Suppliers tabs
   const [isDeleteEnabled, setIsDeleteEnabled] = useState(false)
@@ -177,6 +195,7 @@ export function SettingsModal({
       } else {
         setSupplierEditSuccess(`Supplier "${deletingSupplier.SupplierName}" deleted successfully.`)
         setDeletingSupplier(null)
+        loadSupplierContacts()
         onRefresh()
       }
     } catch (err: any) {
@@ -187,14 +206,22 @@ export function SettingsModal({
   }
 
   function handleStartEditSupplier(supplier: Supplier) {
+    const sIdStr = String(supplier.SupplierID || '').trim()
+    const sRefStr = String(supplier.SupplierReference || '').trim()
+    const suppContacts = supplierContacts.filter((c) => {
+      const cSuppId = String(c.SupplierID).trim()
+      return (sIdStr && cSuppId === sIdStr) || (sRefStr && cSuppId === sRefStr)
+    })
+    const primaryContact = suppContacts.find((c) => c.IsPrimary) || suppContacts[0]
+
     setEditingSupplier(supplier)
     setEditSupplierForm({
       name: supplier.SupplierName || '',
       abn: supplier.ABN || '',
       address: supplier.Address || '',
       paymentTerms: supplier.PaymentTerms || '',
-      phone: supplier.Phone || '',
-      email: supplier.Email || '',
+      phone: supplier.Phone || primaryContact?.PhoneNumber || primaryContact?.MobileNumber || '',
+      email: supplier.Email || primaryContact?.Email || '',
       notes: supplier.Notes || '',
     })
     setSupplierEditError('')
@@ -241,6 +268,7 @@ export function SettingsModal({
       } else {
         setSupplierEditSuccess(`Supplier "${trimmedName}" updated successfully.`)
         setEditingSupplier(null)
+        loadSupplierContacts()
         onRefresh()
       }
     } catch (err: any) {
@@ -1663,6 +1691,7 @@ export function SettingsModal({
                       <tr>
                         <th>ID / Ref</th>
                         <th>Supplier Name</th>
+                        <th>Contact Person</th>
                         <th>Address</th>
                         <th>ABN</th>
                         <th>Payment Terms</th>
@@ -1672,18 +1701,53 @@ export function SettingsModal({
                       </tr>
                     </thead>
                     <tbody>
-                      {suppliers.map((s) => (
-                        <tr key={String(s.SupplierID || s.SupplierReference)}>
-                          <td className="font-bold text-primary">
-                            {s.SupplierReference || s.SupplierID}
-                          </td>
-                          <td className="font-semibold">{s.SupplierName}</td>
-                          <td className="muted">{s.Address || '—'}</td>
-                          <td>{s.ABN || '—'}</td>
-                          <td>{s.PaymentTerms || '—'}</td>
-                          <td>{s.Phone || '—'}</td>
-                          <td>{s.Email || '—'}</td>
-                          <td style={{ textAlign: 'center' }}>
+                      {suppliers.map((s) => {
+                        const sIdStr = String(s.SupplierID || '').trim()
+                        const sRefStr = String(s.SupplierReference || '').trim()
+                        const suppContacts = supplierContacts.filter((c) => {
+                          const cSuppId = String(c.SupplierID).trim()
+                          return (sIdStr && cSuppId === sIdStr) || (sRefStr && cSuppId === sRefStr)
+                        })
+                        const primaryContact = suppContacts.find((c) => c.IsPrimary) || suppContacts[0]
+                        const displayPhone = s.Phone?.trim() || primaryContact?.PhoneNumber?.trim() || primaryContact?.MobileNumber?.trim() || '—'
+                        const displayEmail = s.Email?.trim() || primaryContact?.Email?.trim() || '—'
+
+                        return (
+                          <tr key={String(s.SupplierID || s.SupplierReference)}>
+                            <td className="font-bold text-primary">
+                              {s.SupplierReference || s.SupplierID}
+                            </td>
+                            <td className="font-semibold">{s.SupplierName}</td>
+                            <td>
+                              {primaryContact ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontWeight: 600 }}>{primaryContact.ContactName}</span>
+                                  {primaryContact.IsPrimary && (
+                                    <span
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        backgroundColor: '#ecfdf5',
+                                        color: '#047857',
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        border: '1px solid #a7f3d0',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      Primary
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="muted">—</span>
+                              )}
+                            </td>
+                            <td className="muted">{s.Address || '—'}</td>
+                            <td>{s.ABN || '—'}</td>
+                            <td>{s.PaymentTerms || '—'}</td>
+                            <td>{displayPhone}</td>
+                            <td>{displayEmail}</td>
+                            <td style={{ textAlign: 'center' }}>
                             <div style={{ display: 'inline-flex', gap: '6px' }}>
                               <button
                                 type="button"
@@ -1729,7 +1793,8 @@ export function SettingsModal({
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      )
+                    })}
                     </tbody>
                   </table>
                 </div>

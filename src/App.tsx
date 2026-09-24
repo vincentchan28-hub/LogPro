@@ -3,6 +3,7 @@ import './App.css'
 import CostingPage from './CostingPage'
 import {
   type Supplier,
+  type SupplierContact,
   type Procurement,
   type ProcurementGrade,
   type PriceHistory,
@@ -11,6 +12,7 @@ import {
 } from './types'
 import { ProcurementsTab } from './components/ProcurementsTab'
 import { HomeOverview } from './components/HomeOverview'
+import { ContactsTab } from './components/ContactsTab'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
 import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
@@ -65,6 +67,11 @@ const pageList: { id: Page; label: string; description: string }[] = [
     description: 'Track each negotiation or agreement, from Draft to Completed.',
   },
   {
+    id: 'contacts',
+    label: 'Contacts',
+    description: 'Directory of all supplier contacts across all growers and contractors.',
+  },
+  {
     id: 'priceHistory',
     label: 'Price History',
     description: 'Every price change, with the reason, date and who made it.',
@@ -106,7 +113,10 @@ function App() {
   const [selectedWorkbook, setSelectedWorkbook] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [currentPage, setCurrentPage] = useState<Page>('procurements')
+  const [targetProcurementSupplierId, setTargetProcurementSupplierId] = useState<string | undefined>()
+  const [targetProcurementContactId, setTargetProcurementContactId] = useState<string | undefined>()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [contacts, setContacts] = useState<SupplierContact[]>([])
   const [procurements, setProcurements] = useState<Procurement[]>([])
   const [grades, setGrades] = useState<ProcurementGrade[]>([])
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([])
@@ -174,6 +184,12 @@ function App() {
     if (result.procurements) setProcurements(result.procurements)
     if (result.grades) setGrades(result.grades)
     if (result.priceHistory) setPriceHistory(result.priceHistory)
+    try {
+      const c = window.logPro.getSupplierContacts(result.path)
+      setContacts(c || [])
+    } catch {
+      // ignore
+    }
     setErrorMessage('')
     rememberWorkbook(result.path)
   }
@@ -204,18 +220,32 @@ function App() {
         if (res.priceHistory) setPriceHistory(res.priceHistory)
       }
     })
+    try {
+      const c = window.logPro.getSupplierContacts(selectedWorkbook)
+      setContacts(c || [])
+    } catch {
+      // ignore
+    }
   }
 
   function openSupplierForm(supplier?: Supplier) {
     if (supplier) {
+      const sIdStr = String(supplier.SupplierID || '').trim()
+      const sRefStr = String(supplier.SupplierReference || '').trim()
+      const suppContacts = contacts.filter((c) => {
+        const cSuppId = String(c.SupplierID).trim()
+        return (sIdStr && cSuppId === sIdStr) || (sRefStr && cSuppId === sRefStr)
+      })
+      const primaryContact = suppContacts.find((c) => c.IsPrimary) || suppContacts[0]
+
       setEditingSupplierId(supplier.SupplierID || supplier.SupplierReference || null)
       setSupplierForm({
         name: supplier.SupplierName || '',
         abn: supplier.ABN || '',
         address: supplier.Address || '',
         paymentTerms: supplier.PaymentTerms || '',
-        phone: supplier.Phone || '',
-        email: supplier.Email || '',
+        phone: supplier.Phone || primaryContact?.PhoneNumber || primaryContact?.MobileNumber || '',
+        email: supplier.Email || primaryContact?.Email || '',
         notes: supplier.Notes || '',
       })
     } else {
@@ -299,6 +329,17 @@ function App() {
         contactsToSave = validateNewSupplierContacts(supplierContactForms)
       }
 
+      // If company phone or email is empty, include primary contact details
+      if (!editingSupplierId && contactsToSave.length > 0) {
+        const primary = contactsToSave.find((c) => c.isPrimary) || contactsToSave[0]
+        if (!supplierForm.phone.trim() && primary?.phone.trim()) {
+          supplierForm.phone = primary.phone.trim()
+        }
+        if (!supplierForm.email.trim() && primary?.email.trim()) {
+          supplierForm.email = primary.email.trim()
+        }
+      }
+
       const result = editingSupplierId
         ? await window.logPro.updateSupplier(
             selectedWorkbook,
@@ -333,6 +374,7 @@ function App() {
       }
 
       setSuppliers(result.suppliers)
+      refreshWorkbookData()
       closeSupplierForm()
     } catch (e: any) {
       setSupplierError(e?.message || 'Error saving supplier')
@@ -374,6 +416,7 @@ function App() {
                 <tr>
                   <th>ID / Ref</th>
                   <th>Supplier Name</th>
+                  <th>Contact Person</th>
                   <th>Address</th>
                   <th>ABN</th>
                   <th>Payment Terms</th>
@@ -383,38 +426,73 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {suppliers.map((supplier) => (
-                  <tr key={String(supplier.SupplierID || supplier.SupplierReference)}>
-                    <td style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>
-                      {supplier.SupplierReference || supplier.SupplierID}
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{supplier.SupplierName}</td>
-                    <td style={{ color: 'var(--muted)' }}>{supplier.Address || '—'}</td>
-                    <td>{supplier.ABN || '—'}</td>
-                    <td>{supplier.PaymentTerms || '—'}</td>
-                    <td>{supplier.Phone || '—'}</td>
-                    <td>{supplier.Email || '—'}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => openSupplierForm(supplier)}
-                        title={`Edit ${supplier.SupplierName}`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '4px 8px',
-                          fontSize: '0.8rem',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <Pencil size={13} />
-                        <span>Edit</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {suppliers.map((supplier) => {
+                  const sIdStr = String(supplier.SupplierID || '').trim()
+                  const sRefStr = String(supplier.SupplierReference || '').trim()
+                  const suppContacts = contacts.filter((c) => {
+                    const cSuppId = String(c.SupplierID).trim()
+                    return (sIdStr && cSuppId === sIdStr) || (sRefStr && cSuppId === sRefStr)
+                  })
+                  const primaryContact = suppContacts.find((c) => c.IsPrimary) || suppContacts[0]
+                  const displayPhone = supplier.Phone?.trim() || primaryContact?.PhoneNumber?.trim() || primaryContact?.MobileNumber?.trim() || '—'
+                  const displayEmail = supplier.Email?.trim() || primaryContact?.Email?.trim() || '—'
+
+                  return (
+                    <tr key={String(supplier.SupplierID || supplier.SupplierReference)}>
+                      <td style={{ fontWeight: 700, color: 'var(--primary-dark)' }}>
+                        {supplier.SupplierReference || supplier.SupplierID}
+                      </td>
+                      <td style={{ fontWeight: 600 }}>{supplier.SupplierName}</td>
+                      <td>
+                        {primaryContact ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: 600, color: '#1e293b' }}>{primaryContact.ContactName}</span>
+                            {primaryContact.IsPrimary && (
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  backgroundColor: '#dcfce7',
+                                  color: '#166534',
+                                  padding: '1px 6px',
+                                  borderRadius: '4px',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Primary
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ color: 'var(--muted)' }}>{supplier.Address || '—'}</td>
+                      <td>{supplier.ABN || '—'}</td>
+                      <td>{supplier.PaymentTerms || '—'}</td>
+                      <td>{displayPhone}</td>
+                      <td>{displayEmail}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => openSupplierForm(supplier)}
+                          title={`Edit ${supplier.SupplierName}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 8px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <Pencil size={13} />
+                          <span>Edit</span>
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </section>
@@ -430,6 +508,27 @@ function App() {
           workbookPath={selectedWorkbook}
           suppliers={suppliers}
           onDataChanged={refreshWorkbookData}
+          initialSupplierId={targetProcurementSupplierId}
+          initialContactId={targetProcurementContactId}
+          onClearInitialSelection={() => {
+            setTargetProcurementSupplierId(undefined)
+            setTargetProcurementContactId(undefined)
+          }}
+        />
+      )
+    }
+
+    if (currentPage === 'contacts') {
+      return (
+        <ContactsTab
+          workbookPath={selectedWorkbook}
+          suppliers={suppliers}
+          onRefresh={refreshWorkbookData}
+          onNavigateToProcurement={(supplierId, contactId) => {
+            setTargetProcurementSupplierId(supplierId)
+            setTargetProcurementContactId(contactId)
+            setCurrentPage('procurements')
+          }}
         />
       )
     }

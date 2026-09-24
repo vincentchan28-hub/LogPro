@@ -20,24 +20,27 @@ type ProcurementDetailViewProps = {
 const sectionStyle: CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: '10px',
-  padding: '16px',
-  marginBottom: '16px',
+  padding: '16px 20px',
+  marginBottom: '18px',
   background: '#fbfdff',
 }
 
 const sectionTitleStyle: CSSProperties = {
-  margin: '0 0 12px',
+  margin: '0 0 14px',
   fontSize: '1.05rem',
+  fontWeight: 700,
   color: 'var(--primary-dark)',
 }
 
-const gridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-  gap: '12px',
-}
-
-function Field({ label, value }: { label: string; value?: string | number }) {
+function Field({
+  label,
+  value,
+  subvalue,
+}: {
+  label: string
+  value?: string | number
+  subvalue?: string
+}) {
   const shown =
     value === undefined || String(value).trim() === '' ? '—' : String(value)
 
@@ -45,10 +48,12 @@ function Field({ label, value }: { label: string; value?: string | number }) {
     <div>
       <div
         style={{
-          fontSize: '0.78rem',
+          fontSize: '0.76rem',
           color: '#64748b',
-          fontWeight: 600,
-          marginBottom: '2px',
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.03em',
+          marginBottom: '3px',
         }}
       >
         {label}
@@ -63,10 +68,14 @@ function Field({ label, value }: { label: string; value?: string | number }) {
       >
         {shown}
       </div>
+      {subvalue && (
+        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+          {subvalue}
+        </div>
+      )}
     </div>
   )
 }
-
 
 function money(value: number): string {
   return value.toLocaleString(undefined, {
@@ -80,6 +89,30 @@ function tonnes(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })
+}
+
+const headCell: CSSProperties = {
+  padding: '8px 10px',
+  textAlign: 'left',
+  fontWeight: 700,
+  fontSize: '0.8rem',
+  borderBottom: '1px solid var(--border)',
+}
+
+const headCellRight: CSSProperties = {
+  ...headCell,
+  textAlign: 'right',
+}
+
+const bodyCell: CSSProperties = {
+  padding: '8px 10px',
+  fontSize: '0.84rem',
+  borderBottom: '1px solid #f1f5f9',
+}
+
+const bodyCellRight: CSSProperties = {
+  ...bodyCell,
+  textAlign: 'right',
 }
 
 export function ProcurementDetailView({
@@ -99,125 +132,178 @@ export function ProcurementDetailView({
 
   for (const g of grades) {
     const agreed = Number(g.AgreedTonnes) || 0
+    const delivered = Number(g.DeliveredTonnes) || 0
+    const price = Number(g.AgreedPricePerTonne) || 0
     totalAgreed += agreed
-    totalDelivered += Number(g.DeliveredTonnes) || 0
-    totalValue += agreed * (Number(g.AgreedPricePerTonne) || 0)
+    totalDelivered += delivered
+    totalValue += agreed * price
   }
 
   const totalRemaining = Math.max(0, totalAgreed - totalDelivered)
 
-  const headCell: CSSProperties = { padding: '8px 10px', textAlign: 'left' }
-  const headCellRight: CSSProperties = { padding: '8px 10px', textAlign: 'right' }
-  const bodyCell: CSSProperties = { padding: '8px 10px' }
-  const bodyCellRight: CSSProperties = { padding: '8px 10px', textAlign: 'right' }
+  const contactDetailString = [
+    contact?.Role,
+    contact?.PhoneNumber ? `Ph: ${contact.PhoneNumber}` : null,
+    contact?.MobileNumber ? `Mob: ${contact.MobileNumber}` : null,
+    contact?.Email,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
-    <div
-      style={{
-        background: 'var(--card-bg)',
-        border: '1px solid var(--border)',
-        borderRadius: '12px',
-        padding: '24px',
-        boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
-      }}
-    >
-      {/* Top bar */}
+    <div style={{ padding: '0 4px' }}>
+      {/* Header bar with Ref and Top-Right Action Buttons */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '10px',
-          marginBottom: '18px',
+          gap: '12px',
+          marginBottom: '20px',
+          paddingBottom: '12px',
+          borderBottom: '1px solid var(--border)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <strong style={{ fontSize: '1.3rem', color: 'var(--primary-dark)' }}>
+          <strong style={{ fontSize: '1.35rem', color: 'var(--primary-dark)' }}>
             {procurement.ProcurementRef}
           </strong>
-          {hasSpec && <Paperclip size={16} color="#0284c7" />}
+          {hasSpec && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.75rem',
+                color: '#0284c7',
+                background: '#e0f2fe',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                fontWeight: 600,
+              }}
+            >
+              <Paperclip size={13} /> Spec Attached
+            </span>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={onEdit}
-            style={{
-              width: 'auto',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '9px 18px',
-              fontWeight: 700,
-              color: '#ffffff',
-              background: 'var(--primary)',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-            }}
-          >
-            <Pencil size={15} /> Edit
-          </button>
+        {/* Top-Right Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
             className="secondary-button"
             onClick={onClose}
             style={{
               width: 'auto',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '9px 16px',
+              padding: '8px 16px',
             }}
           >
             <X size={15} /> Close
           </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            style={{
+              width: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 18px',
+              fontWeight: 700,
+              color: '#ffffff',
+              background: 'var(--primary)',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+            }}
+          >
+            <Pencil size={15} /> Edit Procurement
+          </button>
         </div>
       </div>
 
-      {/* Supplier & contact */}
+      {/* 3-ROW STRUCTURE PANEL: All Procurement & Agreement Fields */}
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Supplier &amp; Contact</h3>
-        <div style={gridStyle}>
-          <Field label="Supplier" value={supplier?.SupplierName} />
-          <Field label="Address" value={supplier?.Address} />
-          <Field label="ABN" value={supplier?.ABN} />
-          <Field label="Payment Terms" value={supplier?.PaymentTerms} />
-          <Field label="Contact" value={contact?.ContactName} />
-          <Field label="Contact Role" value={contact?.Role} />
-          <Field label="Phone" value={contact?.PhoneNumber} />
-          <Field label="Mobile" value={contact?.MobileNumber} />
-          <Field label="Email" value={contact?.Email} />
-        </div>
-      </div>
+        <h3 style={sectionTitleStyle}>1. Procurement &amp; Agreement Details</h3>
 
-      {/* Agreement */}
-      <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Agreement</h3>
-        <div style={gridStyle}>
+        {/* ROW 1: 4 columns -> Supplier, Contact Person, Agreement Type, Agreement Detail */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gap: '16px',
+            paddingBottom: '14px',
+            borderBottom: '1px solid #f1f5f9',
+            marginBottom: '14px',
+          }}
+        >
+          <Field
+            label="Supplier"
+            value={supplier?.SupplierName || `Supplier #${procurement.SupplierID}`}
+            subvalue={supplier?.Address ? `Address: ${supplier.Address}` : undefined}
+          />
+          <Field
+            label="Contact Person"
+            value={contact?.ContactName || '—'}
+            subvalue={contactDetailString || undefined}
+          />
           <Field label="Agreement Type" value={procurement.AgreementType} />
-          <Field label={`${procurement.AgreementType} Detail`} value={procurement.AgreementDetail} />
+          <Field label={`${procurement.AgreementType} Detail / Code`} value={procurement.AgreementDetail} />
         </div>
-      </div>
 
-      {/* Plantation & harvest */}
-      <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Plantation &amp; Harvest Period</h3>
-        <div style={gridStyle}>
-          <Field label="Plantation" value={procurement.Plantation} />
-          <Field label="Harvest Period Start" value={procurement.HarvestPeriodStart} />
-          <Field label="Harvest Period End" value={procurement.HarvestPeriodEnd} />
+        {/* ROW 2: 3 columns -> Plantation Name, Species, Weekly Estimated Delivery */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: '16px',
+            paddingBottom: '14px',
+            borderBottom: '1px solid #f1f5f9',
+            marginBottom: '14px',
+          }}
+        >
+          <Field label="Plantation Name" value={procurement.Plantation} />
+          <Field label="Species" value={procurement.Species || '—'} />
+          <Field
+            label="Weekly Estimated Delivery"
+            value={
+              procurement.WeeklyEstimatedTonnes !== undefined &&
+              procurement.WeeklyEstimatedTonnes !== '' &&
+              Number(procurement.WeeklyEstimatedTonnes) > 0
+                ? `${Number(procurement.WeeklyEstimatedTonnes).toLocaleString()} tonnes / week`
+                : '—'
+            }
+          />
+        </div>
+
+        {/* ROW 3: 4 columns -> ALL DATES ON THE SAME ROW! */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gap: '16px',
+            background: '#f8fafc',
+            padding: '12px 14px',
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+          }}
+        >
           <Field label="Agreement Start Date" value={procurement.StartDate} />
           <Field label="Agreement End Date" value={procurement.EndDate} />
+          <Field label="Harvest Period Start" value={procurement.HarvestPeriodStart} />
+          <Field label="Harvest Period End" value={procurement.HarvestPeriodEnd} />
         </div>
       </div>
 
-      {/* Grades */}
+      {/* 2. Grades, Products, Prices & Tonnes Table */}
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Grades, Products, Prices &amp; Tonnes</h3>
+        <h3 style={sectionTitleStyle}>2. Grades, Products, Prices &amp; Tonnes</h3>
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: '#ffffff' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+          <table style={{ width: '100%', minWidth: '750px', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
             <thead>
               <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
                 <th style={headCell}>Species</th>
@@ -233,7 +319,7 @@ export function ProcurementDetailView({
             <tbody>
               {grades.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ ...bodyCell, textAlign: 'center', color: 'var(--muted)' }}>
+                  <td colSpan={8} style={{ ...bodyCell, textAlign: 'center', color: 'var(--muted)', padding: '16px' }}>
                     No grades entered.
                   </td>
                 </tr>
@@ -283,45 +369,101 @@ export function ProcurementDetailView({
         </div>
       </div>
 
-      {/* Log specification */}
-      <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Log Specification</h3>
-        {hasSpec ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <Paperclip size={16} color="#0284c7" />
-            <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>
-              {procurement.LogSpecFileName || 'Log specification'}
-            </span>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={onOpenSpec}
-              style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem' }}
-            >
-              Open in new window
-            </button>
+      {/* 3. Log Specification & General Notes (Side by side) */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: '16px',
+          marginBottom: '20px',
+        }}
+      >
+        {/* Log specification */}
+        <div style={{ ...sectionStyle, marginBottom: 0 }}>
+          <h3 style={sectionTitleStyle}>3. Log Specification</h3>
+          {hasSpec ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <Paperclip size={16} color="#0284c7" />
+              <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>
+                {procurement.LogSpecFileName || 'Log specification file'}
+              </span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={onOpenSpec}
+                style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem' }}
+              >
+                Open in new window
+              </button>
+            </div>
+          ) : (
+            <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
+              No Log Specification attached.
+            </div>
+          )}
+        </div>
+
+        {/* General Notes */}
+        <div style={{ ...sectionStyle, marginBottom: 0 }}>
+          <h3 style={sectionTitleStyle}>4. General Notes</h3>
+          <div
+            style={{
+              fontSize: '0.9rem',
+              color: 'var(--text)',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {procurement.Notes || '—'}
           </div>
-        ) : (
-          <div style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
-            No Log Specification attached.
-          </div>
-        )}
+        </div>
       </div>
 
-      {/* General Notes */}
-      <div style={{ ...sectionStyle, marginBottom: 0 }}>
-        <h3 style={sectionTitleStyle}>General Notes</h3>
-        <div
+      {/* Bottom Action Buttons (Right-aligned) */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          gap: '10px',
+          paddingTop: '12px',
+          borderTop: '1px solid var(--border)',
+        }}
+      >
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onClose}
           style={{
-            fontSize: '0.92rem',
-            color: 'var(--text)',
-            lineHeight: 1.5,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
+            width: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '9px 18px',
           }}
         >
-          {procurement.Notes || '—'}
-        </div>
+          <X size={15} /> Close
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          style={{
+            width: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '9px 20px',
+            fontWeight: 700,
+            color: '#ffffff',
+            background: 'var(--primary)',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          <Pencil size={15} /> Edit Procurement
+        </button>
       </div>
     </div>
   )

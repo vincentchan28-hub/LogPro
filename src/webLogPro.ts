@@ -82,6 +82,7 @@ export const HEADERS: Record<string, string[]> = {
     'HarvestPeriodEnd',
     'StartDate',
     'EndDate',
+    'WeeklyEstimatedTonnes',
     'Status',
     'AcceptanceDate',
     'AcceptanceTime',
@@ -294,6 +295,10 @@ export function readProcurements(workbook: XLSX.WorkBook): Procurement[] {
       HarvestPeriodEnd: String(row.HarvestPeriodEnd || ''),
       StartDate: String(row.StartDate || ''),
       EndDate: String(row.EndDate || ''),
+      WeeklyEstimatedTonnes:
+        row.WeeklyEstimatedTonnes !== undefined && row.WeeklyEstimatedTonnes !== ''
+          ? Number(row.WeeklyEstimatedTonnes) || String(row.WeeklyEstimatedTonnes)
+          : '',
       Status: String(row.Status || 'Draft'),
       AcceptanceDate: String(row.AcceptanceDate || ''),
       AcceptanceTime: String(row.AcceptanceTime || ''),
@@ -952,7 +957,17 @@ export const webLogPro = {
 
     try {
       const allContacts = readSupplierContacts(workbook)
-      const nextId = allContacts.length + 1
+      const maxId = allContacts.reduce((max, c) => Math.max(max, Number(c.ContactID) || 0), 0)
+      const nextId = maxId + 1
+
+      const isPrimary = Boolean(contactInput.IsPrimary)
+      if (isPrimary) {
+        for (const c of allContacts) {
+          if (String(c.SupplierID).trim() === String(contactInput.SupplierID).trim()) {
+            c.IsPrimary = false
+          }
+        }
+      }
 
       const newContact: SupplierContact = {
         ContactID: nextId,
@@ -963,10 +978,90 @@ export const webLogPro = {
         MobileNumber: contactInput.MobileNumber?.trim() || '',
         Email: contactInput.Email?.trim() || '',
         Notes: contactInput.Notes?.trim() || '',
-        IsPrimary: Boolean(contactInput.IsPrimary),
+        IsPrimary: isPrimary,
       }
 
       allContacts.push(newContact)
+      setRows(workbook, 'SupplierContacts', HEADERS.SupplierContacts, allContacts as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+
+      return { contacts: allContacts, error: '' }
+    } catch (e: any) {
+      return { contacts: [], error: e?.message || String(e) }
+    }
+  },
+
+  async updateSupplierContact(
+    workbookPath: string,
+    contactId: string | number,
+    contactInput: Partial<SupplierContact>,
+  ): Promise<{ contacts: SupplierContact[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) {
+      return { contacts: [], error: 'No workbook is open.' }
+    }
+
+    try {
+      const allContacts = readSupplierContacts(workbook)
+      const targetIdStr = String(contactId).trim()
+      const index = allContacts.findIndex((c) => String(c.ContactID).trim() === targetIdStr)
+
+      if (index === -1) {
+        return { contacts: allContacts, error: `Contact #${contactId} not found.` }
+      }
+
+      const existing = allContacts[index]
+      const updatedSupplierId = contactInput.SupplierID !== undefined ? contactInput.SupplierID : existing.SupplierID
+      const isPrimary = contactInput.IsPrimary !== undefined ? Boolean(contactInput.IsPrimary) : existing.IsPrimary
+
+      if (isPrimary) {
+        for (const c of allContacts) {
+          if (String(c.SupplierID).trim() === String(updatedSupplierId).trim() && String(c.ContactID).trim() !== targetIdStr) {
+            c.IsPrimary = false
+          }
+        }
+      }
+
+      allContacts[index] = {
+        ...existing,
+        SupplierID: updatedSupplierId,
+        ContactName: contactInput.ContactName !== undefined ? contactInput.ContactName.trim() : existing.ContactName,
+        Role: contactInput.Role !== undefined ? contactInput.Role.trim() : existing.Role,
+        PhoneNumber: contactInput.PhoneNumber !== undefined ? contactInput.PhoneNumber.trim() : existing.PhoneNumber,
+        MobileNumber: contactInput.MobileNumber !== undefined ? contactInput.MobileNumber.trim() : existing.MobileNumber,
+        Email: contactInput.Email !== undefined ? contactInput.Email.trim() : existing.Email,
+        Notes: contactInput.Notes !== undefined ? contactInput.Notes.trim() : existing.Notes,
+        IsPrimary: isPrimary,
+      }
+
+      setRows(workbook, 'SupplierContacts', HEADERS.SupplierContacts, allContacts as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+
+      return { contacts: allContacts, error: '' }
+    } catch (e: any) {
+      return { contacts: [], error: e?.message || String(e) }
+    }
+  },
+
+  async deleteSupplierContact(
+    workbookPath: string,
+    contactId: string | number,
+  ): Promise<{ contacts: SupplierContact[]; error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) {
+      return { contacts: [], error: 'No workbook is open.' }
+    }
+
+    try {
+      const allContacts = readSupplierContacts(workbook)
+      const targetIdStr = String(contactId).trim()
+      const index = allContacts.findIndex((c) => String(c.ContactID).trim() === targetIdStr)
+
+      if (index === -1) {
+        return { contacts: allContacts, error: `Contact #${contactId} not found.` }
+      }
+
+      allContacts.splice(index, 1)
       setRows(workbook, 'SupplierContacts', HEADERS.SupplierContacts, allContacts as any)
       saveWorkbookToStorage(workbookPath, workbook)
 
@@ -1035,6 +1130,10 @@ export const webLogPro = {
         HarvestPeriodEnd: String(data.HarvestPeriodEnd || '').trim(),
         StartDate: String(data.StartDate || '').trim(),
         EndDate: String(data.EndDate || '').trim(),
+        WeeklyEstimatedTonnes:
+          data.WeeklyEstimatedTonnes !== undefined && data.WeeklyEstimatedTonnes !== ''
+            ? Number(data.WeeklyEstimatedTonnes) || 0
+            : '',
         Status: data.Status || 'Draft',
         AcceptanceDate: String(data.AcceptanceDate || '').trim(),
         AcceptanceTime: String(data.AcceptanceTime || '').trim(),
@@ -1145,6 +1244,10 @@ export const webLogPro = {
         HarvestPeriodEnd: data.HarvestPeriodEnd !== undefined ? String(data.HarvestPeriodEnd) : existing.HarvestPeriodEnd,
         StartDate: data.StartDate !== undefined ? String(data.StartDate) : existing.StartDate,
         EndDate: data.EndDate !== undefined ? String(data.EndDate) : existing.EndDate,
+        WeeklyEstimatedTonnes:
+          data.WeeklyEstimatedTonnes !== undefined
+            ? (data.WeeklyEstimatedTonnes !== '' ? Number(data.WeeklyEstimatedTonnes) || 0 : '')
+            : (existing.WeeklyEstimatedTonnes ?? ''),
         Status: data.Status || existing.Status,
         AcceptanceDate: data.AcceptanceDate !== undefined ? String(data.AcceptanceDate) : existing.AcceptanceDate,
         AcceptanceTime: data.AcceptanceTime !== undefined ? String(data.AcceptanceTime) : existing.AcceptanceTime,

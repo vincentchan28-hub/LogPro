@@ -75,6 +75,23 @@ declare global {
         error: string
       }>
 
+      updateSupplierContact: (
+        workbookPath: string,
+        contactId: string | number,
+        contactInput: Partial<SupplierContact>,
+      ) => Promise<{
+        contacts: SupplierContact[]
+        error: string
+      }>
+
+      deleteSupplierContact: (
+        workbookPath: string,
+        contactId: string | number,
+      ) => Promise<{
+        contacts: SupplierContact[]
+        error: string
+      }>
+
       getSupplierContacts: (
         workbookPath: string,
         supplierId?: string | number,
