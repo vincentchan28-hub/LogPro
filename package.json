@@ -1,7 +1,7 @@
 {
   "name": "logpro",
   "private": true,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -14,7 +14,6 @@
     "dist": "npm run build && electron-builder"
   },
   "dependencies": {
-    "dist": "^0.1.2",
     "lucide-react": "^1.47.0",
     "playwright": "^1.63.0",
     "react": "^19.2.8",
