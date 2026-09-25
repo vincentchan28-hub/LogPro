@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, ipcMain, net } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, net, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
 const archiver = require('archiver');
+const unzipper = require('unzipper');
 
 
 let mainWindow;
@@ -75,27 +76,6 @@ const workbookSheets = [
   'GradeDefinitions',
 ];
 
-function getAttachmentsRoot(workbookPath) {
-  const folder = path.dirname(workbookPath);
-  return path.join(folder, 'Attachments');
-}
-
-function getSupplierAttachmentsFolder(workbookPath, supplierName) {
-  const root = getAttachmentsRoot(workbookPath);
-  const safeName = supplierName
-    .replace(/[<>:"/\\|?*]/g, '_')
-    .trim()
-    .slice(0, 60);
-  return path.join(root, safeName);
-}
-
-function buildAttachmentFileName(procurementRef, originalFileName) {
-  const safeBase = (procurementRef || 'UNKNOWN')
-    .replace(/[^A-Za-z0-9_-]/g, '_')
-    .slice(0, 40);
-  const ext = path.extname(originalFileName || '').toLowerCase() || '.bin';
-  return `${safeBase}_${originalFileName}`;
-}
 
 const workbookHeaders = {
   Suppliers: [
@@ -976,14 +956,6 @@ function getSupplierAttachmentsFolder(workbookPath, supplierName) {
   return path.join(root, safeName);
 }
 
-function buildAttachmentFileName(procurementRef, originalFileName) {
-  const safeBase = (procurementRef || 'UNKNOWN')
-    .replace(/[^A-Za-z0-9_-]/g, '_')
-    .slice(0, 40);
-  const ext = path.extname(originalFileName || '').toLowerCase() || '.bin';
-  return `${safeBase}_${originalFileName}`;
-}
-
 ipcMain.handle(
   'attachment:saveFile',
   async (_event, workbookPath, supplierName, procurementRef, fileName, base64Data) => {
@@ -999,8 +971,24 @@ ipcMain.handle(
       const supplierFolder = getSupplierAttachmentsFolder(workbookPath, supplierName);
       fs.mkdirSync(supplierFolder, { recursive: true });
 
-      const safeFileName = buildAttachmentFileName(procurementRef, fileName);
-      const fullPath = path.join(supplierFolder, safeFileName);
+      const safeBase = (procurementRef || 'UNKNOWN')
+        .replace(/[^A-Za-z0-9_-]/g, '_')
+        .slice(0, 40);
+      const cleanOriginal = path.basename(fileName || 'attachment')
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .trim();
+      const parsed = path.parse(cleanOriginal);
+      const baseName = (parsed.name || 'attachment').slice(0, 50);
+      const ext = parsed.ext || '';
+
+      let candidateName = `${safeBase}_${cleanOriginal}`;
+      let fullPath = path.join(supplierFolder, candidateName);
+      let counter = 1;
+      while (fs.existsSync(fullPath)) {
+        candidateName = `${safeBase}_${baseName}_(${counter})${ext}`;
+        fullPath = path.join(supplierFolder, candidateName);
+        counter++;
+      }
 
       const buffer = Buffer.from(base64Data, 'base64');
       await retryWhileLocked('save attachment', () => {
@@ -1009,7 +997,7 @@ ipcMain.handle(
 
       const relativePath = path.relative(path.dirname(workbookPath), fullPath);
 
-      return { ok: true, error: '', relativePath, fileName: safeFileName };
+      return { ok: true, error: '', relativePath, fileName: candidateName };
     } catch (error) {
       console.error('Could not save attachment:', error);
       return {
@@ -1046,6 +1034,32 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  'attachment:openFile',
+  async (_event, workbookPath, relativePath) => {
+    try {
+      if (!workbookPath || !relativePath) {
+        return { ok: false, error: 'Missing workbook path or attachment path.' };
+      }
+
+      const fullPath = path.resolve(path.dirname(workbookPath), relativePath);
+      if (!fs.existsSync(fullPath)) {
+        return { ok: false, error: 'Attachment file not found on disk.' };
+      }
+
+      const openError = await shell.openPath(fullPath);
+      if (openError) {
+        return { ok: false, error: openError };
+      }
+
+      return { ok: true, error: '' };
+    } catch (error) {
+      console.error('Could not open attachment:', error);
+      return { ok: false, error: friendlyError(error, 'open attachment file') };
+    }
+  },
+);
+
+ipcMain.handle(
   'attachment:listForProcurement',
   async (_event, workbookPath, supplierName, procurementRef) => {
     try {
@@ -1075,6 +1089,148 @@ ipcMain.handle(
     }
   },
 );
+// ---------------------------------------------------------------------------
+// Backup & Restore: Full ZIP snapshot of workbook + Attachments folder
+// ---------------------------------------------------------------------------
+
+function createZipArchive(sourceWorkbookPath, destinationZipPath, includeAttachments) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(destinationZipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', () => {
+      resolve();
+    });
+
+    archive.on('error', (err) => {
+      reject(err);
+    });
+
+    archive.pipe(output);
+
+    // 1. Current Excel workbook at root of the ZIP
+    const workbookFileName = path.basename(sourceWorkbookPath);
+    archive.file(sourceWorkbookPath, { name: workbookFileName });
+
+    // 2. Attachments folder
+    if (includeAttachments) {
+      const attachmentsFolder = getAttachmentsRoot(sourceWorkbookPath);
+      if (fs.existsSync(attachmentsFolder)) {
+        archive.directory(attachmentsFolder, 'Attachments');
+      }
+    }
+
+    archive.finalize();
+  });
+}
+
+ipcMain.handle('backup:everything', async (_event, workbookPath) => {
+  try {
+    if (!workbookPath || !fs.existsSync(workbookPath)) {
+      return { ok: false, error: 'Current workbook file could not be found.' };
+    }
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const defaultName = `LogPro_Backup_${dateStamp}.zip`;
+
+    const saveRes = await dialog.showSaveDialog(mainWindow, {
+      title: 'Backup Everything (Workbook & Attachments)',
+      defaultPath: path.join(path.dirname(workbookPath), defaultName),
+      filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+    });
+
+    if (saveRes.canceled || !saveRes.filePath) {
+      return { ok: false, canceled: true };
+    }
+
+    await retryWhileLocked('create backup ZIP', async () => {
+      await createZipArchive(workbookPath, saveRes.filePath, true);
+    });
+
+    return { ok: true, zipPath: saveRes.filePath };
+  } catch (error) {
+    console.error('Backup error:', error);
+    return { ok: false, error: friendlyError(error, 'create the backup archive') };
+  }
+});
+
+ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
+  try {
+    if (!currentWorkbookPath || !fs.existsSync(currentWorkbookPath)) {
+      return { ok: false, error: 'Current workbook path is not available.' };
+    }
+
+    const openRes = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Backup ZIP to Restore',
+      filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
+      properties: ['openFile'],
+    });
+
+    if (openRes.canceled || !openRes.filePaths || openRes.filePaths.length === 0) {
+      return { ok: false, canceled: true };
+    }
+
+    const selectedZipPath = openRes.filePaths[0];
+
+    // 1. Validate the selected ZIP
+    const zip = await unzipper.Open.file(selectedZipPath);
+    const files = zip.files;
+    const xlsxEntries = files.filter(
+      (f) => f.path.toLowerCase().endsWith('.xlsx') && !f.path.includes('~$') && !path.basename(f.path).startsWith('.')
+    );
+
+    if (xlsxEntries.length === 0) {
+      return {
+        ok: false,
+        error: 'The selected backup ZIP does not contain any valid LogPro Excel (.xlsx) workbook.',
+      };
+    }
+
+    const targetFolder = path.dirname(currentWorkbookPath);
+
+    // 2. Create safety backup of the existing workbook & Attachments folder
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const safetyZipPath = path.join(targetFolder, `Safety_Backup_Before_Restore_${dateStamp}.zip`);
+
+    await retryWhileLocked('create safety backup', async () => {
+      await createZipArchive(currentWorkbookPath, safetyZipPath, true);
+    });
+
+    if (!fs.existsSync(safetyZipPath)) {
+      return { ok: false, error: 'Failed to create safety backup prior to restore. Aborting restore.' };
+    }
+
+    // 3. Extract restore archive into targetFolder
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(selectedZipPath)
+        .pipe(unzipper.Extract({ path: targetFolder }))
+        .on('close', resolve)
+        .on('error', reject);
+    });
+
+    // 4. Determine restored workbook path
+    let restoredWorkbookPath = currentWorkbookPath;
+    const currentName = path.basename(currentWorkbookPath);
+    const matchingEntry = xlsxEntries.find((e) => path.basename(e.path) === currentName);
+    if (!matchingEntry) {
+      restoredWorkbookPath = path.join(targetFolder, path.basename(xlsxEntries[0].path));
+    }
+
+    return {
+      ok: true,
+      restoredWorkbookPath,
+      safetyBackupPath,
+      restoredWorkbookName: path.basename(restoredWorkbookPath),
+    };
+  } catch (error) {
+    console.error('Restore error:', error);
+    return { ok: false, error: friendlyError(error, 'restore the backup archive') };
+  }
+});
 
 app.whenReady().then(() => {
   createWindow();

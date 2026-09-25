@@ -1,0 +1,8 @@
+{
+  "name": "LogPro",
+  "description": "Log procurement and timber supply management application with contract tracking, haulage projections, costing calculations, and physical attachments.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

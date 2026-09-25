@@ -50,6 +50,19 @@ const api = {
   listAttachmentsForProcurement(workbookPath, supplierName, procurementRef) {
     return ipcRenderer.invoke('attachment:listForProcurement', workbookPath, supplierName, procurementRef)
   },
+
+  openAttachmentFile(workbookPath, relativePath) {
+    return ipcRenderer.invoke('attachment:openFile', workbookPath, relativePath)
+  },
+
+  // Full ZIP Backup & Restore
+  backupEverything(workbookPath) {
+    return ipcRenderer.invoke('backup:everything', workbookPath)
+  },
+
+  restoreBackup(workbookPath) {
+    return ipcRenderer.invoke('backup:restore', workbookPath)
+  },
 }
 
 contextBridge.exposeInMainWorld('logProDesktop', api)

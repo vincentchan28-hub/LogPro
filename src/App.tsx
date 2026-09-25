@@ -136,24 +136,6 @@ async function testSaveAttachment() {
     alert('No workbook open yet.');
     return;
   }
-  async function testCreateWorkbookDirect() {
-  const desktop = (window as any).logProDesktop;
-  if (!desktop || typeof desktop.createWorkbook !== 'function') {
-    alert('Desktop API not available.');
-    return;
-  }
-
-  try {
-    const result = await desktop.createWorkbook();
-    if (!result || !result.path) {
-      alert('Create workbook failed: no path returned.');
-      return;
-    }
-    alert('Workbook created at:\n' + result.path);
-  } catch (e: any) {
-    alert('Create workbook error: ' + (e?.message || String(e)));
-  }
-}
 
   const desktop = (window as any).logProDesktop;
   if (!desktop || typeof desktop.saveAttachmentFile !== 'function') {

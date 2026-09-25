@@ -34,14 +34,14 @@ import { AddContactModal } from './AddContactModal'
 import { PriceRevisionModal, type DetectedPriceChange } from './PriceRevisionModal'
 import { ProcurementDetailView } from './ProcurementDetailView'
 import {
-  checkSpecFile,
-  fileToSpec,
-  loadSpec,
-  makeSpecId,
   openSpecInNewWindow,
   removeSpec,
-  saveSpec,
 } from '../specStorage'
+import {
+  checkAttachmentFile,
+  saveAttachment,
+  openAttachmentInNewWindow,
+} from '../attachmentStorage'
 
 type ProcurementsTabProps = {
   workbookPath: string
@@ -404,7 +404,7 @@ export function ProcurementsTab({
     const file = fileList?.[0]
     if (!file) return
 
-    const problem = checkSpecFile(file)
+    const problem = checkAttachmentFile(file)
     if (problem) {
       setSpecError(problem)
       return
@@ -429,46 +429,19 @@ export function ProcurementsTab({
   async function handleOpenSpec(specId: string) {
     if (!specId) return
     setErrorMsg('')
+    if (specId.includes('/') || specId.includes('\\') || !specId.startsWith('spec-')) {
+      const message = await openAttachmentInNewWindow(workbookPath, specId)
+      if (message) {
+        setErrorMsg(message)
+      }
+      return
+    }
     const message = await openSpecInNewWindow(specId)
     if (message) {
       setErrorMsg(message)
     }
   }
 
-  // Used when saving a NEW procurement (also "Save as New (Duplicate)").
-  async function buildSpecFieldsForNew(): Promise<{ fields: SpecFields; createdId: string }> {
-    if (pendingSpecFile) {
-      const id = makeSpecId()
-      const spec = fileToSpec(pendingSpecFile)
-      await saveSpec(id, spec)
-      return {
-        fields: { LogSpecFileID: id, LogSpecFileName: spec.name, LogSpecFileType: spec.type },
-        createdId: id,
-      }
-    }
-
-    if (specFileId) {
-      // Duplicate: give the copy its own file so removing one never affects the other.
-      const existing = await loadSpec(specFileId)
-      if (existing) {
-        const id = makeSpecId()
-        await saveSpec(id, existing)
-        return {
-          fields: {
-            LogSpecFileID: id,
-            LogSpecFileName: existing.name,
-            LogSpecFileType: existing.type,
-          },
-          createdId: id,
-        }
-      }
-    }
-
-    return {
-      fields: { LogSpecFileID: '', LogSpecFileName: '', LogSpecFileType: '' },
-      createdId: '',
-    }
-  }
 
   // ---------------- Panel actions ----------------
 
@@ -679,14 +652,9 @@ export function ProcurementsTab({
     setErrorMsg('')
     setSuccessMsg('')
 
-    let createdSpecId = ''
-
     try {
       const validatedGrades = validateForm()
       setIsSaving(true)
-
-      const spec = await buildSpecFieldsForNew()
-      createdSpecId = spec.createdId
 
       // Enforce mutual date exclusivity
       const useAgreementDates = Boolean(startDate.trim() || endDate.trim())
@@ -716,30 +684,73 @@ export function ProcurementsTab({
         AcceptanceNotes: acceptanceNotes.trim(),
         Notes: generalNotes.trim(),
         ForceWeeklyForecast: forceWeeklyForecast,
-        ...spec.fields,
+        LogSpecFileID: pendingSpecFile ? '' : specFileId,
+        LogSpecFileName: pendingSpecFile ? '' : specFileName,
+        LogSpecFileType: pendingSpecFile ? '' : specFileType,
       }
 
+      // 1. Save the procurement to generate the ProcurementRef
       const res = await window.logPro.saveProcurement(
         workbookPath,
         payload,
         validatedGrades,
       )
-      setIsSaving(false)
 
       if (res.error) {
-        await removeSpec(createdSpecId)
+        setIsSaving(false)
         setErrorMsg(res.error)
-      } else {
-        loadData()
-        onDataChanged()
-        loadProcurementIntoForm(res.procurement)
-        setSuccessMsg(`Procurement ${res.procurement.ProcurementRef} saved successfully!`)
-        setMode('view')
-        setIsDirty(false)
+        return
       }
+
+      let savedProcurement = res.procurement
+
+      // 2. If a physical attachment was selected, save it using the generated reference
+      if (pendingSpecFile && savedProcurement?.ProcurementRef) {
+        const supp = suppliers.find(
+          (s) =>
+            String(s.SupplierID) === String(supplierId) ||
+            String(s.SupplierReference) === String(supplierId),
+        )
+        const supplierName = supp?.SupplierName || `Supplier_${supplierId}`
+        const attachRes = await saveAttachment(
+          workbookPath,
+          supplierName,
+          savedProcurement.ProcurementRef,
+          pendingSpecFile,
+        )
+
+        if (attachRes.ok) {
+          const updateRes = await window.logPro.updateProcurement(
+            workbookPath,
+            savedProcurement.ProcurementRef,
+            {
+              LogSpecFileID: attachRes.relativePath,
+              LogSpecFileName: attachRes.fileName,
+              LogSpecFileType: pendingSpecFile.type || 'application/octet-stream',
+            },
+            validatedGrades,
+          )
+          if (!updateRes.error && updateRes.procurement) {
+            savedProcurement = updateRes.procurement
+          }
+        } else {
+          setErrorMsg(
+            `Procurement ${savedProcurement.ProcurementRef} was created, but attachment could not be saved: ${attachRes.error}`,
+          )
+        }
+      }
+
+      setIsSaving(false)
+      loadData()
+      onDataChanged()
+      loadProcurementIntoForm(savedProcurement)
+      if (!pendingSpecFile || (savedProcurement && savedProcurement.LogSpecFileID)) {
+        setSuccessMsg(`Procurement ${savedProcurement.ProcurementRef} saved successfully!`)
+      }
+      setMode('view')
+      setIsDirty(false)
     } catch (err: any) {
       setIsSaving(false)
-      await removeSpec(createdSpecId)
       setErrorMsg(err?.message || String(err))
     }
   }
@@ -840,8 +851,6 @@ export function ProcurementsTab({
     setIsSaving(true)
     setErrorMsg('')
 
-    let createdSpecId = ''
-
     try {
       // Which spec file the procurement has right now (before this save)
       const previousSpecId =
@@ -852,13 +861,27 @@ export function ProcurementsTab({
       let specFields: SpecFields
 
       if (pendingSpecFile) {
-        createdSpecId = makeSpecId()
-        const spec = fileToSpec(pendingSpecFile)
-        await saveSpec(createdSpecId, spec)
+        const supp = suppliers.find(
+          (s) =>
+            String(s.SupplierID) === String(payload.SupplierID || supplierId) ||
+            String(s.SupplierReference) === String(payload.SupplierID || supplierId),
+        )
+        const supplierName = supp?.SupplierName || `Supplier_${payload.SupplierID || supplierId}`
+        const attachRes = await saveAttachment(
+          workbookPath,
+          supplierName,
+          selectedProcRef,
+          pendingSpecFile,
+        )
+        if (!attachRes.ok) {
+          setIsSaving(false)
+          setErrorMsg(`Failed to save attachment file: ${attachRes.error}`)
+          return
+        }
         specFields = {
-          LogSpecFileID: createdSpecId,
-          LogSpecFileName: spec.name,
-          LogSpecFileType: spec.type,
+          LogSpecFileID: attachRes.relativePath,
+          LogSpecFileName: attachRes.fileName,
+          LogSpecFileType: pendingSpecFile.type || 'application/octet-stream',
         }
       } else {
         specFields = {
@@ -884,11 +907,10 @@ export function ProcurementsTab({
       setIsSaving(false)
 
       if (res.error) {
-        await removeSpec(createdSpecId)
         setErrorMsg(res.error)
       } else {
-        // The old file is no longer needed if it was replaced or removed
-        if (previousSpecId && previousSpecId !== specFields.LogSpecFileID) {
+        // If an old browser IndexedDB spec was replaced or removed, clean it up
+        if (previousSpecId && previousSpecId !== specFields.LogSpecFileID && previousSpecId.startsWith('spec-')) {
           await removeSpec(previousSpecId)
         }
 
@@ -903,7 +925,6 @@ export function ProcurementsTab({
       }
     } catch (err: any) {
       setIsSaving(false)
-      await removeSpec(createdSpecId)
       setErrorMsg(err?.message || String(err))
     }
   }

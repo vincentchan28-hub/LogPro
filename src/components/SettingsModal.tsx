@@ -16,6 +16,9 @@ import {
   Save,
   Trash2,
   Filter,
+  Archive,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -89,6 +92,9 @@ export function SettingsModal({
   const [workbookMessage, setWorkbookMessage] = useState('')
   const [workbookError, setWorkbookError] = useState('')
   const [isChangingWorkbook, setIsChangingWorkbook] = useState(false)
+  const [isBackingUp, setIsBackingUp] = useState(false)
+  const [isRestoring, setIsRestoring] = useState(false)
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
 
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
@@ -339,6 +345,92 @@ export function SettingsModal({
       setWorkbookError(err?.message || 'Could not open the workbook.')
     } finally {
       setIsChangingWorkbook(false)
+    }
+  }
+
+  async function handleBackupEverything() {
+    setWorkbookMessage('')
+    setWorkbookError('')
+    if (!workbookPath) {
+      setWorkbookError('No workbook is currently open to back up.')
+      return
+    }
+
+    const desktop = (window as any).logProDesktop
+    if (!desktop || typeof desktop.backupEverything !== 'function') {
+      setWorkbookError('Full ZIP backup feature requires the Electron desktop application.')
+      return
+    }
+
+    setIsBackingUp(true)
+    try {
+      const res = await desktop.backupEverything(workbookPath)
+      if (res.canceled) {
+        setIsBackingUp(false)
+        return
+      }
+      if (!res.ok) {
+        setWorkbookError(res.error || 'Failed to create complete backup.')
+      } else {
+        setWorkbookMessage(`Complete backup archive created successfully: ${res.zipPath}`)
+      }
+    } catch (err: any) {
+      setWorkbookError(err?.message || 'Error occurred while creating backup.')
+    } finally {
+      setIsBackingUp(false)
+    }
+  }
+
+  function handlePromptRestore() {
+    setWorkbookMessage('')
+    setWorkbookError('')
+    if (!workbookPath) {
+      setWorkbookError('No workbook is currently open. Please open or create a workbook first.')
+      return
+    }
+    setIsRestoreConfirmOpen(true)
+  }
+
+  async function handleExecuteRestore() {
+    setIsRestoreConfirmOpen(false)
+    setWorkbookMessage('')
+    setWorkbookError('')
+
+    const desktop = (window as any).logProDesktop
+    if (!desktop || typeof desktop.restoreBackup !== 'function') {
+      setWorkbookError('Full restore feature requires the Electron desktop application.')
+      return
+    }
+
+    setIsRestoring(true)
+    try {
+      const res = await desktop.restoreBackup(workbookPath)
+      if (res.canceled) {
+        setIsRestoring(false)
+        return
+      }
+      if (!res.ok) {
+        setWorkbookError(res.error || 'Failed to restore backup.')
+      } else {
+        setWorkbookMessage(
+          `Backup restored successfully! A safety backup was saved at: ${res.safetyBackupPath}. Reloading workbook...`,
+        )
+        if (res.restoredWorkbookPath) {
+          try {
+            const loadRes = await window.logPro.loadWorkbook(res.restoredWorkbookPath)
+            if (onWorkbookChanged && loadRes) {
+              onWorkbookChanged(loadRes)
+            }
+            onRefresh()
+          } catch (e: any) {
+            console.warn('Reloading restored workbook warning:', e)
+          }
+        }
+      }
+    } catch (err: any) {
+      setWorkbookError(err?.message || 'Error occurred while restoring backup.')
+    } finally {
+      setIsRestoring(false)
     }
   }
 
@@ -2071,6 +2163,73 @@ export function SettingsModal({
                     </div>
                   </div>
                 </div>
+
+                {/* Backup Everything card */}
+                <div className="tool-card">
+                  <div className="tool-card-icon bg-emerald-light">
+                    <Archive size={22} className="text-emerald" />
+                  </div>
+
+                  <div className="tool-card-body">
+                    <h5>Backup Everything</h5>
+
+                    <p>
+                      Create a complete ZIP backup containing your active Excel workbook, the complete
+                      Attachments folder, and all supplier files.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={handleBackupEverything}
+                      disabled={!workbookPath || isBackingUp || isChangingWorkbook}
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#059669',
+                      }}
+                    >
+                      <Archive size={15} />
+                      {isBackingUp ? 'Creating Backup…' : 'Backup Everything (.zip)'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Restore Complete Backup card */}
+                <div className="tool-card">
+                  <div className="tool-card-icon bg-amber-light">
+                    <RotateCcw size={22} className="text-amber" />
+                  </div>
+
+                  <div className="tool-card-body">
+                    <h5>Restore Complete Backup</h5>
+
+                    <p>
+                      Restore a full ZIP backup. Replaces the current workbook and local Attachments folder.
+                      An automatic safety backup will be created first.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handlePromptRestore}
+                      disabled={!workbookPath || isRestoring || isChangingWorkbook}
+                      style={{
+                        marginTop: '12px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        borderColor: '#d97706',
+                        color: '#b45309',
+                      }}
+                    >
+                      <RotateCcw size={15} />
+                      {isRestoring ? 'Restoring…' : 'Restore Complete Backup'}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {workbookMessage && (
@@ -2886,6 +3045,120 @@ export function SettingsModal({
                 >
                   <Trash2 size={15} />
                   {isDeletingSupplier ? 'Deleting…' : 'Delete Supplier'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* RESTORE CONFIRMATION MODAL */}
+        {isRestoreConfirmOpen && (
+          <div
+            className="modal-backdrop"
+            style={{ zIndex: 1200 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isRestoring) {
+                setIsRestoreConfirmOpen(false)
+              }
+            }}
+          >
+            <section
+              className="modal-card"
+              role="dialog"
+              aria-modal="true"
+              style={{ width: 'min(100%, 540px)', background: '#ffffff', padding: '24px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: '#fef3c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#b45309',
+                    flexShrink: 0,
+                  }}
+                >
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0f172a' }}>
+                    Confirm Complete Backup Restoration
+                  </h3>
+                  <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                    This action will replace your active workbook and attachments.
+                  </span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  fontSize: '0.86rem',
+                  color: '#92400e',
+                  lineHeight: 1.5,
+                  marginBottom: '16px',
+                }}
+              >
+                <strong style={{ display: 'block', marginBottom: '6px' }}>
+                  Please read carefully before proceeding:
+                </strong>
+                <ul style={{ margin: '0 0 8px 18px', padding: 0 }}>
+                  <li>Your currently open workbook will be replaced by the restored version.</li>
+                  <li>Local Attachments and supplier files will be synchronized to the backup state.</li>
+                  <li>Any changes made after this backup was taken will be overwritten.</li>
+                </ul>
+                <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
+                  Automatic safety: An automatic safety ZIP snapshot of your existing workbook and Attachments will be saved before extraction.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '10px 12px',
+                  fontSize: '0.8rem',
+                  color: '#475569',
+                  marginBottom: '20px',
+                }}
+              >
+                <strong>Warning:</strong> Never edit the same workbook simultaneously on two different computers.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setIsRestoreConfirmOpen(false)}
+                  disabled={isRestoring}
+                  style={{ width: 'auto', padding: '8px 16px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleExecuteRestore}
+                  disabled={isRestoring}
+                  style={{
+                    width: 'auto',
+                    padding: '8px 18px',
+                    background: '#dc2626',
+                    borderColor: '#b91c1c',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                  }}
+                >
+                  {isRestoring ? 'Restoring…' : 'Proceed with Restore'}
                 </button>
               </div>
             </section>

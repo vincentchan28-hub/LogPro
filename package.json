@@ -19,6 +19,7 @@
     "playwright": "^1.63.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "unzipper": "^0.12.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
