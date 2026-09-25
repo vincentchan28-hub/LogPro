@@ -200,6 +200,7 @@ export function ProcurementDetailView({
               alignItems: 'center',
               gap: '6px',
               padding: '8px 16px',
+              borderRadius: '0px',
             }}
           >
             <X size={15} /> Close
@@ -217,7 +218,7 @@ export function ProcurementDetailView({
               color: '#ffffff',
               background: 'var(--primary)',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: '0px',
               cursor: 'pointer',
             }}
           >
@@ -226,18 +227,14 @@ export function ProcurementDetailView({
         </div>
       </div>
 
-      {/* 3-ROW STRUCTURE PANEL: All Procurement & Agreement Fields */}
+      {/* 1. Supplier & Agreement Info */}
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>1. Procurement &amp; Agreement Details</h3>
-
-        {/* ROW 1: 4 columns -> Supplier, Contact Person, Agreement Type, Agreement Detail */}
+        <h3 style={sectionTitleStyle}>1. Supplier &amp; Agreement Info</h3>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px',
-            paddingBottom: '14px',
-            borderBottom: '1px solid #f1f5f9',
             marginBottom: '14px',
           }}
         >
@@ -253,21 +250,32 @@ export function ProcurementDetailView({
           />
           <Field label="Agreement Type" value={procurement.AgreementType} />
           <Field label={`${procurement.AgreementType} Detail / Code`} value={procurement.AgreementDetail} />
+          <Field label="Agreement Start Date" value={procurement.StartDate} />
+          <Field label="Agreement End Date" value={procurement.EndDate} />
         </div>
+      </div>
 
-        {/* ROW 2: 3 columns -> Plantation Name, Species, Weekly Estimated Delivery */}
+      {/* 2. Plantation Name and Harvest Period */}
+      <div style={sectionStyle}>
+        <h3 style={sectionTitleStyle}>2. Plantation Name and Harvest Period</h3>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
             gap: '16px',
-            paddingBottom: '14px',
-            borderBottom: '1px solid #f1f5f9',
-            marginBottom: '14px',
           }}
         >
           <Field label="Plantation Name" value={procurement.Plantation} />
           <Field label="Species" value={procurement.Species || '—'} />
+          <Field label="Harvest Period Start" value={procurement.HarvestPeriodStart} />
+          <Field label="Harvest Period End" value={procurement.HarvestPeriodEnd} />
+        </div>
+      </div>
+
+      {/* 3. Haulage Commitment */}
+      <div style={sectionStyle}>
+        <h3 style={sectionTitleStyle}>3. Haulage Commitment</h3>
+        <div style={{ maxWidth: '340px' }}>
           <Field
             label="Weekly Estimated Delivery"
             value={
@@ -279,29 +287,11 @@ export function ProcurementDetailView({
             }
           />
         </div>
-
-        {/* ROW 3: 4 columns -> ALL DATES ON THE SAME ROW! */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-            gap: '16px',
-            background: '#f8fafc',
-            padding: '12px 14px',
-            borderRadius: '8px',
-            border: '1px solid #e2e8f0',
-          }}
-        >
-          <Field label="Agreement Start Date" value={procurement.StartDate} />
-          <Field label="Agreement End Date" value={procurement.EndDate} />
-          <Field label="Harvest Period Start" value={procurement.HarvestPeriodStart} />
-          <Field label="Harvest Period End" value={procurement.HarvestPeriodEnd} />
-        </div>
       </div>
 
-      {/* 2. Grades, Products, Prices & Tonnes Table */}
+      {/* 4. Grades, Products, Prices & Tonnes Table */}
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>2. Grades, Products, Prices &amp; Tonnes</h3>
+        <h3 style={sectionTitleStyle}>4. Grades, Products, Prices &amp; Tonnes</h3>
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: '#ffffff' }}>
           <table style={{ width: '100%', minWidth: '750px', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
             <thead>
@@ -369,7 +359,7 @@ export function ProcurementDetailView({
         </div>
       </div>
 
-      {/* 3. Log Specification & General Notes (Side by side) */}
+      {/* 5. Log Specification & 6. General Notes */}
       <div
         style={{
           display: 'grid',
@@ -380,7 +370,7 @@ export function ProcurementDetailView({
       >
         {/* Log specification */}
         <div style={{ ...sectionStyle, marginBottom: 0 }}>
-          <h3 style={sectionTitleStyle}>3. Log Specification</h3>
+          <h3 style={sectionTitleStyle}>5. Log Specification</h3>
           {hasSpec ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <Paperclip size={16} color="#0284c7" />
@@ -391,7 +381,7 @@ export function ProcurementDetailView({
                 type="button"
                 className="secondary-button"
                 onClick={onOpenSpec}
-                style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem' }}
+                style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem', borderRadius: '0px' }}
               >
                 Open in new window
               </button>
@@ -405,7 +395,7 @@ export function ProcurementDetailView({
 
         {/* General Notes */}
         <div style={{ ...sectionStyle, marginBottom: 0 }}>
-          <h3 style={sectionTitleStyle}>4. General Notes</h3>
+          <h3 style={sectionTitleStyle}>6. General Notes</h3>
           <div
             style={{
               fontSize: '0.9rem',
@@ -441,6 +431,7 @@ export function ProcurementDetailView({
             alignItems: 'center',
             gap: '6px',
             padding: '9px 18px',
+            borderRadius: '0px',
           }}
         >
           <X size={15} /> Close
@@ -458,7 +449,7 @@ export function ProcurementDetailView({
             color: '#ffffff',
             background: 'var(--primary)',
             border: 'none',
-            borderRadius: '6px',
+            borderRadius: '0px',
             cursor: 'pointer',
           }}
         >

@@ -5,9 +5,6 @@ import {
   TrendingUp,
   ArrowRight,
   Truck,
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react'
 import { type Supplier, type Page, type Procurement } from '../types'
 
@@ -187,13 +184,13 @@ export function HomeOverview({
     return suppSet.size
   }, [activeWeeklyDeliveries])
 
-  // 5-Week Delivery Projection: Current Week + 4 upcoming projection weeks
+  // 4-Week Delivery Projection: 4 upcoming projection weeks (excluding current week)
   const lookaheadWeeks = useMemo(() => {
     const weeks = []
     const now = new Date()
     const currentRealWeek = getWeekRange(now)
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 1; i <= 4; i++) {
       const targetDate = new Date(currentRealWeek.start.getTime() + i * 7 * 24 * 60 * 60 * 1000)
       const wRange = getWeekRange(targetDate)
 
@@ -230,7 +227,7 @@ export function HomeOverview({
 
       weeks.push({
         index: i,
-        label: i === 0 ? 'Current Week' : `+${i} Week${i > 1 ? 's' : ''}`,
+        label: `+${i} Week${i > 1 ? 's' : ''}`,
         dateRange: wRange.label,
         totalTonnes: weekTonnes,
         supplierCount: activeSupps.size,
@@ -249,14 +246,6 @@ export function HomeOverview({
     const todayWeek = getWeekRange(today)
     return todayWeek.startStr === currentWeek.startStr
   }, [currentWeek])
-
-  function handlePrevWeek() {
-    setSelectedDate((prev) => new Date(prev.getTime() - 7 * 24 * 60 * 60 * 1000))
-  }
-
-  function handleNextWeek() {
-    setSelectedDate((prev) => new Date(prev.getTime() + 7 * 24 * 60 * 60 * 1000))
-  }
 
   function handleCurrentWeek() {
     setSelectedDate(new Date())
@@ -440,64 +429,6 @@ export function HomeOverview({
               Automatically tallies weekly commitments for all procurements with agreement or harvest dates covering this week.
             </p>
           </div>
-
-          {/* Week Selector Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handlePrevWeek}
-              style={{
-                width: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '6px 12px',
-                fontSize: '0.84rem',
-              }}
-              title="Previous Week"
-            >
-              <ChevronLeft size={16} /> Prev Week
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCurrentWeek}
-              style={{
-                width: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                borderRadius: '6px',
-                border: isViewingThisWeek ? '1px solid var(--primary)' : '1px solid var(--border)',
-                background: isViewingThisWeek ? 'var(--primary-soft)' : '#fff',
-                color: isViewingThisWeek ? 'var(--primary)' : 'var(--text)',
-                cursor: 'pointer',
-              }}
-            >
-              <Calendar size={14} /> This Week
-            </button>
-
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handleNextWeek}
-              style={{
-                width: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                padding: '6px 12px',
-                fontSize: '0.84rem',
-              }}
-              title="Next Week"
-            >
-              Next Week <ChevronRight size={16} />
-            </button>
-          </div>
         </div>
 
         {/* Selected Week Display Banner */}
@@ -519,12 +450,11 @@ export function HomeOverview({
             <span style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
               Viewing Schedule For:
             </span>
-            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>
-              {currentWeek.label}
-              {isViewingThisWeek && (
+            <div style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span>{currentWeek.label}</span>
+              {isViewingThisWeek ? (
                 <span
                   style={{
-                    marginLeft: '8px',
                     fontSize: '0.75rem',
                     fontWeight: 700,
                     padding: '2px 8px',
@@ -535,6 +465,24 @@ export function HomeOverview({
                 >
                   Current Week
                 </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleCurrentWeek}
+                  style={{
+                    padding: '2px 10px',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    borderRadius: '4px',
+                    border: '1px solid var(--border)',
+                    background: '#ffffff',
+                    color: 'var(--primary)',
+                    cursor: 'pointer',
+                  }}
+                  title="Return to Current Week"
+                >
+                  Return to Current Week
+                </button>
               )}
             </div>
           </div>
@@ -556,10 +504,10 @@ export function HomeOverview({
           </div>
         </div>
 
-        {/* 5-Week Lookahead Bar (Current week + 4 upcoming projection weeks) */}
+        {/* 4-Week Lookahead Bar (Upcoming 4 projection weeks) */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            4-Week Delivery Projection (including current week: 5 weeks total):
+            4 Week Projection
           </div>
           <div
             style={{
@@ -639,8 +587,8 @@ export function HomeOverview({
         </div>
 
         {/* Detailed Weekly Commitment Table */}
-        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155', marginBottom: '10px' }}>
-          Agreements In Range for this Week:
+        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e293b', marginBottom: '10px' }}>
+          Weekly Agreement
         </div>
 
         {activeWeeklyDeliveries.length === 0 ? (
@@ -676,7 +624,7 @@ export function HomeOverview({
             <table
               style={{
                 width: '100%',
-                minWidth: '920px',
+                minWidth: '860px',
                 borderCollapse: 'collapse',
                 fontSize: '0.86rem',
               }}
@@ -685,21 +633,16 @@ export function HomeOverview({
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--border)', color: '#475569' }}>
                   <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>Ref</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>Supplier</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>Agreement / Plantation</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>Plantation</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap' }}>Species</th>
                   <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, whiteSpace: 'nowrap', minWidth: '240px' }}>Active Date Range</th>
                   <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>Weekly Commitment</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>% of Week</th>
                   <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, whiteSpace: 'nowrap' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {activeWeeklyDeliveries.map((item) => {
                   const p = item.procurement
-                  const pct =
-                    totalWeeklyExpectedTonnes > 0
-                      ? Math.round((item.weeklyTonnes / totalWeeklyExpectedTonnes) * 100)
-                      : 0
 
                   return (
                     <tr
@@ -711,10 +654,10 @@ export function HomeOverview({
                       </td>
                       <td style={{ padding: '10px 12px', fontWeight: 600, whiteSpace: 'nowrap' }}>{item.supplierName}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <div>{p.AgreementType}: {p.AgreementDetail || '—'}</div>
-                        {p.Plantation && (
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{p.Plantation || '—'}</div>
+                        {(p.AgreementType || p.AgreementDetail) && (
                           <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                            {p.Plantation}
+                            {p.AgreementType}: {p.AgreementDetail || '—'}
                           </div>
                         )}
                       </td>
@@ -747,9 +690,6 @@ export function HomeOverview({
                           <span style={{ color: '#94a3b8', fontWeight: 400 }}>Not set</span>
                         )}
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>
-                        {item.weeklyTonnes > 0 ? `${pct}%` : '—'}
-                      </td>
                       <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
@@ -772,7 +712,6 @@ export function HomeOverview({
                   <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '1.05rem', color: '#0284c7', fontWeight: 800, whiteSpace: 'nowrap' }}>
                     {totalWeeklyExpectedTonnes.toLocaleString(undefined, { maximumFractionDigits: 1 })} t
                   </td>
-                  <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>100%</td>
                   <td />
                 </tr>
               </tfoot>

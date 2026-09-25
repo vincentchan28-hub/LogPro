@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  Truck,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -1212,30 +1213,30 @@ export function ProcurementsTab({
               </button>
             </div>
 
-            {/* Quick Action: New Procurement */}
-            <button
-              type="button"
-              onClick={handleStartNew}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                padding: '9px 14px',
-                marginBottom: '10px',
-                fontSize: '0.86rem',
-                fontWeight: 700,
-                color: '#ffffff',
-                background: 'var(--primary)',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
-              }}
-            >
-              <Plus size={16} /> New Procurement
-            </button>
+            {/* Quick Action: +new */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+              <button
+                type="button"
+                onClick={handleStartNew}
+                style={{
+                  width: 'auto',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '5px 12px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: 'var(--primary)',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)',
+                }}
+              >
+                <Plus size={14} /> +new
+              </button>
+            </div>
 
             {/* Register Search (Full Width) */}
             <div style={{ display: 'flex', marginBottom: '10px' }}>
@@ -1483,7 +1484,7 @@ export function ProcurementsTab({
                   lineHeight: 1.6,
                 }}
               >
-                Select a procurement from the register on the left to view, or click <strong>+ New Procurement</strong> on the left panel to add a new procurement.
+                Select a procurement from the register on the left to view, or click <strong>+new</strong> on the left panel to add a new procurement.
               </p>
             </div>
           )}
@@ -1517,9 +1518,90 @@ export function ProcurementsTab({
               onSubmit={mode === 'edit' ? handleUpdateSelected : handleSaveNew}
               onChange={() => setIsDirty(true)}
             >
-              {/* Section 1: Procurement & Agreement Details (3-Row Structure) */}
+              {/* Top Actions Bar - Right Aligned */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  flexWrap: 'wrap',
+                  marginBottom: '20px',
+                  paddingBottom: '14px',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleCancelForm}
+                  style={{
+                    width: 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 16px',
+                    background: '#ffffff',
+                    color: '#334155',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '0px',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <RotateCcw size={15} /> Cancel
+                </button>
+
+                {mode === 'edit' && (
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={handleSaveNew}
+                    style={{
+                      width: 'auto',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      background: '#ffffff',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '0px',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                    }}
+                    title="Save current details as a brand new agreement"
+                  >
+                    <Plus size={15} /> Save as New (Duplicate)
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  style={{
+                    width: 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 20px',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    color: '#ffffff',
+                    background: '#475569',
+                    border: '1px solid #334155',
+                    borderRadius: '0px',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <Save size={16} />
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+
+              {/* Section 1: Supplier & Agreement Info */}
               {(() => {
-                const hasAgreementDates = Boolean(startDate.trim() || endDate.trim())
                 const hasHarvestDates = Boolean(harvestPeriodStart.trim() || harvestPeriodEnd.trim())
 
                 return (
@@ -1543,7 +1625,7 @@ export function ProcurementsTab({
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Building size={18} color="var(--primary)" />
                         <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)', fontWeight: 700 }}>
-                          1. Procurement &amp; Agreement Details
+                          1. Supplier &amp; Agreement Info
                         </h3>
                       </div>
                       {supplierId ? (
@@ -1558,6 +1640,7 @@ export function ProcurementsTab({
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
+                            borderRadius: '0px',
                           }}
                           title={`Add contact for ${currentSupplier?.SupplierName || 'supplier'}`}
                         >
@@ -1566,15 +1649,15 @@ export function ProcurementsTab({
                       ) : null}
                     </div>
 
-                    {/* Row 1: 4 columns -> Supplier *, Contact Person, Agreement Type *, Agreement Detail / Code * */}
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-                        gap: '12px',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '14px',
                         marginBottom: '14px',
                       }}
                     >
+                      {/* Supplier dropdown */}
                       <div>
                         <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
                           Supplier *
@@ -1629,6 +1712,7 @@ export function ProcurementsTab({
                         </select>
                       </div>
 
+                      {/* Contact Person dropdown */}
                       <div>
                         <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
                           Contact Person
@@ -1712,6 +1796,7 @@ export function ProcurementsTab({
                         </select>
                       </div>
 
+                      {/* Agreement Type */}
                       <div>
                         <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
                           Agreement Type *
@@ -1736,6 +1821,7 @@ export function ProcurementsTab({
                         </select>
                       </div>
 
+                      {/* Agreement Detail */}
                       <div>
                         <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
                           {agreementType} Detail / Code *
@@ -1756,111 +1842,23 @@ export function ProcurementsTab({
                       </div>
                     </div>
 
-                    {/* Row 2: 3 columns -> Plantation Name, Species, Weekly Estimated Delivery */}
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                        gap: '12px',
-                        marginBottom: '14px',
-                      }}
-                    >
-                      <div>
-                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
-                          Plantation Name
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Green Triangle Estate, Pine Ridge"
-                          value={plantation}
-                          onChange={(e) => setPlantation(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border)',
-                            background: '#fff',
-                          }}
-                        />
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
-                          Species
-                        </label>
-                        <select
-                          value={species}
-                          onChange={(e) => setSpecies(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border)',
-                            background: '#fff',
-                          }}
-                        >
-                          <option value="">-- Select Species --</option>
-                          {speciesList.map((sp) => (
-                            <option key={sp.SpeciesDefinitionID || sp.SpeciesName} value={sp.SpeciesName}>
-                              {sp.SpeciesName}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
-                          Weekly Estimated Delivery (tonnes)
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            placeholder="e.g. 250"
-                            value={weeklyEstimatedTonnes}
-                            onChange={(e) => setWeeklyEstimatedTonnes(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 50px 8px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border)',
-                              background: '#fff',
-                              fontWeight: 700,
-                            }}
-                          />
-                          <span
-                            style={{
-                              position: 'absolute',
-                              right: '10px',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              color: '#64748b',
-                              fontSize: '0.82rem',
-                              fontWeight: 600,
-                              pointerEvents: 'none',
-                            }}
-                          >
-                            t / wk
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Row 3: 4 columns -> ALL DATES ON THE SAME ROW */}
+                    {/* Agreement Dates (Start / End) */}
                     <div
                       style={{
                         background: '#f8fafc',
                         border: '1px solid #e2e8f0',
                         borderRadius: '8px',
-                        padding: '12px',
-                        marginBottom: '8px',
+                        padding: '12px 14px',
+                        marginBottom: '12px',
                       }}
                     >
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                        Agreement Date Range (Option A)
+                      </div>
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
                           gap: '12px',
                         }}
                       >
@@ -1941,109 +1939,10 @@ export function ProcurementsTab({
                             }}
                           />
                         </div>
-
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
-                              Harvest Period Start
-                            </label>
-                            {harvestPeriodStart && (
-                              <button
-                                type="button"
-                                onClick={() => setHarvestPeriodStart('')}
-                                style={{
-                                  fontSize: '0.72rem',
-                                  color: '#dc2626',
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                }}
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="date"
-                            value={harvestPeriodStart}
-                            disabled={hasAgreementDates}
-                            onChange={(e) => setHarvestPeriodStart(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border)',
-                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
-                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
-                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
-                              Harvest Period End
-                            </label>
-                            {harvestPeriodEnd && (
-                              <button
-                                type="button"
-                                onClick={() => setHarvestPeriodEnd('')}
-                                style={{
-                                  fontSize: '0.72rem',
-                                  color: '#dc2626',
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                }}
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="date"
-                            value={harvestPeriodEnd}
-                            disabled={hasAgreementDates}
-                            onChange={(e) => setHarvestPeriodEnd(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border)',
-                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
-                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
-                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Rule note directly under row 3 */}
-                      <div
-                        style={{
-                          marginTop: '10px',
-                          padding: '6px 10px',
-                          background: '#eff6ff',
-                          border: '1px solid #bfdbfe',
-                          borderRadius: '6px',
-                          fontSize: '0.78rem',
-                          color: '#1e40af',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        <Info size={15} style={{ flexShrink: 0, color: '#2563eb' }} />
-                        <span>
-                          <strong>Date Range Rule:</strong> Enter <em>either</em> Agreement Dates <em>or</em> Harvest Period. When one is entered, the other is disabled so the Home tab can schedule and tally your expected weekly delivery volume accurately.
-                        </span>
                       </div>
                     </div>
 
-                    {/* Readonly info strip */}
+                    {/* Current Supplier Info strip */}
                     {currentSupplier && (
                       <div
                         style={{
@@ -2131,7 +2030,261 @@ export function ProcurementsTab({
                 )
               })()}
 
-              {/* Section 5: Grades, Products, Prices & Tonnes (Interactive Table) */}
+              {/* Section 2: Plantation Name and Harvest Period */}
+              {(() => {
+                const hasAgreementDates = Boolean(startDate.trim() || endDate.trim())
+
+                return (
+                  <div
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: '10px',
+                      padding: '18px',
+                      marginBottom: '18px',
+                      background: '#fbfdff',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                      <Building size={18} color="var(--primary)" />
+                      <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)', fontWeight: 700 }}>
+                        2. Plantation Name and Harvest Period
+                      </h3>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '14px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Plantation Name
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Green Triangle Estate, Pine Ridge"
+                          value={plantation}
+                          onChange={(e) => setPlantation(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                          Species
+                        </label>
+                        <select
+                          value={species}
+                          onChange={(e) => setSpecies(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid var(--border)',
+                            background: '#fff',
+                          }}
+                        >
+                          <option value="">-- Select Species --</option>
+                          {speciesList.map((sp) => (
+                            <option key={sp.SpeciesDefinitionID || sp.SpeciesName} value={sp.SpeciesName}>
+                              {sp.SpeciesName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Harvest Period Dates */}
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '12px 14px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                        Harvest Period Range (Option B)
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '12px',
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
+                              Harvest Period Start
+                            </label>
+                            {harvestPeriodStart && (
+                              <button
+                                type="button"
+                                onClick={() => setHarvestPeriodStart('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={harvestPeriodStart}
+                            disabled={hasAgreementDates}
+                            onChange={(e) => setHarvestPeriodStart(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
+                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
+                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasAgreementDates ? '#94a3b8' : 'inherit' }}>
+                              Harvest Period End
+                            </label>
+                            {harvestPeriodEnd && (
+                              <button
+                                type="button"
+                                onClick={() => setHarvestPeriodEnd('')}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  color: '#dc2626',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={harvestPeriodEnd}
+                            disabled={hasAgreementDates}
+                            onChange={(e) => setHarvestPeriodEnd(e.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasAgreementDates ? '#f1f5f9' : '#fff',
+                              cursor: hasAgreementDates ? 'not-allowed' : 'auto',
+                              color: hasAgreementDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: '10px',
+                          padding: '6px 10px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          color: '#1e40af',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <Info size={15} style={{ flexShrink: 0, color: '#2563eb' }} />
+                        <span>
+                          <strong>Date Range Rule:</strong> Enter <em>either</em> Agreement Dates <em>or</em> Harvest Period. When one is entered, the other is disabled so the Home tab can schedule and tally your weekly delivery volume accurately.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Section 3: Haulage Commitment */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '18px',
+                  marginBottom: '18px',
+                  background: '#fbfdff',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <Truck size={18} color="var(--primary)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)', fontWeight: 700 }}>
+                    3. Haulage Commitment
+                  </h3>
+                </div>
+
+                <div style={{ maxWidth: '340px' }}>
+                  <label style={{ display: 'block', fontWeight: 600, fontSize: '0.84rem', marginBottom: '4px' }}>
+                    Weekly Estimated Delivery (tonnes)
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="e.g. 250"
+                      value={weeklyEstimatedTonnes}
+                      onChange={(e) => setWeeklyEstimatedTonnes(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 50px 8px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border)',
+                        background: '#fff',
+                        fontWeight: 700,
+                      }}
+                    />
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        color: '#64748b',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      t / wk
+                    </span>
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '6px' }}>
+                    Committed weekly tonnage delivery. Feeds the Weekly Delivery Schedule and Haulage Planner on the Home tab.
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 4: Grades, Products, Prices & Tonnes (Interactive Table) */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -2154,7 +2307,7 @@ export function ProcurementsTab({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Layers size={18} color="var(--primary)" />
                     <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                      2. Grades, Products, Prices &amp; Tonnes
+                      4. Grades, Products, Prices &amp; Tonnes
                     </h3>
                   </div>
 
@@ -2438,7 +2591,7 @@ export function ProcurementsTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Paperclip size={18} color="var(--primary)" />
                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    3. Log Specification File (Optional)
+                    5. Log Specification File (Optional)
                   </h3>
                 </div>
 
@@ -2494,7 +2647,7 @@ export function ProcurementsTab({
                       type="button"
                       className="secondary-button"
                       onClick={() => void handleOpenSpec(specFileId)}
-                      style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem' }}
+                      style={{ width: 'auto', padding: '5px 12px', fontSize: '0.8rem', borderRadius: '0px' }}
                     >
                       View
                     </button>
@@ -2512,6 +2665,7 @@ export function ProcurementsTab({
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
+                        borderRadius: '0px',
                       }}
                     >
                       <Trash2 size={14} /> Remove
@@ -2528,6 +2682,7 @@ export function ProcurementsTab({
                       alignItems: 'center',
                       gap: '4px',
                       cursor: 'pointer',
+                      borderRadius: '0px',
                     }}
                   >
                     <Upload size={14} />
@@ -2545,7 +2700,7 @@ export function ProcurementsTab({
                 </div>
               </div>
 
-              {/* Section 4: General Notes */}
+              {/* Section 6: General Notes */}
               <div
                 style={{
                   border: '1px solid var(--border)',
@@ -2558,7 +2713,7 @@ export function ProcurementsTab({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
                   <FileSpreadsheet size={18} color="var(--primary)" />
                   <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                    4. General Notes
+                    6. General Notes
                   </h3>
                 </div>
 
@@ -2587,7 +2742,7 @@ export function ProcurementsTab({
               <div
                 style={{
                   display: 'flex',
-                  gap: '12px',
+                  gap: '10px',
                   alignItems: 'center',
                   justifyContent: 'flex-end',
                   flexWrap: 'wrap',
@@ -2597,35 +2752,47 @@ export function ProcurementsTab({
               >
                 <button
                   type="button"
-                  className="secondary-button"
                   onClick={handleCancelForm}
                   style={{
                     width: 'auto',
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '11px 18px',
+                    padding: '8px 16px',
+                    background: '#ffffff',
+                    color: '#334155',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '0px',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
                   }}
                 >
-                  <RotateCcw size={16} /> Cancel
+                  <RotateCcw size={15} /> Cancel
                 </button>
 
                 {mode === 'edit' && (
                   <button
                     type="button"
-                    className="secondary-button"
                     disabled={isSaving}
                     onClick={handleSaveNew}
                     style={{
                       width: 'auto',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '8px',
-                      padding: '11px 20px',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      background: '#ffffff',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '0px',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
                     }}
                     title="Save current details as a brand new agreement"
                   >
-                    <Plus size={16} /> Save as New (Duplicate)
+                    <Plus size={15} /> Save as New (Duplicate)
                   </button>
                 )}
 
@@ -2634,20 +2801,21 @@ export function ProcurementsTab({
                   disabled={isSaving}
                   style={{
                     width: 'auto',
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    padding: '11px 24px',
-                    fontSize: '0.95rem',
+                    gap: '6px',
+                    padding: '8px 20px',
+                    fontSize: '0.88rem',
                     fontWeight: 700,
+                    color: '#ffffff',
+                    background: '#475569',
+                    border: '1px solid #334155',
+                    borderRadius: '0px',
+                    cursor: isSaving ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  <Save size={18} />
-                  {isSaving
-                    ? 'Saving...'
-                    : mode === 'edit'
-                    ? 'Save Changes'
-                    : 'Save Procurement'}
+                  <Save size={16} />
+                  {isSaving ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </form>
