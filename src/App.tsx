@@ -168,7 +168,18 @@ function App() {
         )
       })
       .finally(() => setIsStarting(false))
+
+    // Cleanup: clear cached workbook path when app closes
+    return () => {
+      try {
+        window.localStorage.removeItem(lastWorkbookKey)
+        console.log('[App] Cleared workbook path cache on close')
+      } catch (error) {
+        console.warn('[App] Could not clear cache on close:', error)
+      }
+    }
   }, [])
+
 
   function applyWorkbookResult(result: WorkbookResult | null) {
     if (!result) return
@@ -675,7 +686,7 @@ function App() {
 
         {/* Version footer */}
         <footer className="app-version-footer">
-          LogPro v0.1.0
+          LogPro v{__APP_VERSION__}
         </footer>
 
         {isSupplierFormOpen && (
