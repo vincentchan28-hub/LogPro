@@ -1957,6 +1957,7 @@ export const webLogPro = {
 export function initWebLogPro(): void {
   const existingLogPro = (window as any).logProDesktop
 
+
   try {
     if (window.localStorage.getItem(LAST_WORKBOOK_KEY) === null) {
       window.localStorage.setItem(LAST_WORKBOOK_KEY, 'log_procurement.xlsx')
@@ -1965,6 +1966,7 @@ export function initWebLogPro(): void {
     // Ignore storage errors
   }
 
+
   // Merge webLogPro methods so that all features (species, grades, procurements, etc.)
   // are fully available in both Electron desktop and browser environments
   const merged: any = {
@@ -1972,12 +1974,14 @@ export function initWebLogPro(): void {
     ...(existingLogPro || {}),
   }
 
+
   // Explicitly ensure all workbook functions from webLogPro are bound
   for (const [key, value] of Object.entries(webLogPro)) {
     if (typeof value === 'function') {
       merged[key] = (value as Function).bind(webLogPro)
     }
   }
+
 
   // Preserve desktop native rate fetching if available
   if (existingLogPro && typeof existingLogPro.getRates === 'function') {

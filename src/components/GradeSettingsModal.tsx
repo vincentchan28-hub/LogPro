@@ -642,20 +642,32 @@ export function GradeSettingsModal({
                   <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>
                     Product:
                   </span>
-                  {PRODUCT_TYPES.map((pt) => (
-                    <button
-                      key={pt}
-                      type="button"
-                      className={selectedProductType === pt ? '' : 'secondary-button'}
-                      style={{ width: 'auto', padding: '5px 12px', fontSize: '0.82rem' }}
-                      onClick={() => {
-                        setSelectedProductType(pt as any)
-                        setSelectedGradeForDetails(null)
-                      }}
-                    >
-                      {pt}
-                    </button>
-                  ))}
+{PRODUCT_TYPES.map((pt) => (
+  <button
+    key={pt}
+    type="button"
+    className={selectedProductType === pt ? '' : 'secondary-button'}
+    style={{
+      width: 'auto',
+      padding: '1px 4px',
+      borderRadius: '3px',
+      fontSize: 'calc(0.78rem - 1px)',
+      fontWeight: 600,
+      lineHeight: 1.3,
+      whiteSpace: 'nowrap',
+      cursor: 'pointer',
+      border: pt === 'Green' ? '1px solid #86b98a' : '1px solid #c49a72',
+      backgroundColor: pt === 'Green' ? '#e5f3e7' : '#f4e8dc',
+      color: pt === 'Green' ? '#285c31' : '#70451f',
+    }}
+    onClick={() => {
+      setSelectedProductType(pt as any)
+      setSelectedGradeForDetails(null)
+    }}
+  >
+    {pt}
+  </button>
+))}
                 </div>
 
                 <label

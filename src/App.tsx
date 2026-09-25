@@ -19,6 +19,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { Building, Plus, Trees, Settings as SettingsIcon, Pencil } from 'lucide-react'
 import './App.css'
 
+
 type SupplierForm = {
   name: string
   abn: string
@@ -129,6 +130,72 @@ function App() {
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
+  // DEBUG: test physical attachment save
+async function testSaveAttachment() {
+  if (!selectedWorkbook) {
+    alert('No workbook open yet.');
+    return;
+  }
+  async function testCreateWorkbookDirect() {
+  const desktop = (window as any).logProDesktop;
+  if (!desktop || typeof desktop.createWorkbook !== 'function') {
+    alert('Desktop API not available.');
+    return;
+  }
+
+  try {
+    const result = await desktop.createWorkbook();
+    if (!result || !result.path) {
+      alert('Create workbook failed: no path returned.');
+      return;
+    }
+    alert('Workbook created at:\n' + result.path);
+  } catch (e: any) {
+    alert('Create workbook error: ' + (e?.message || String(e)));
+  }
+}
+
+  const desktop = (window as any).logProDesktop;
+  if (!desktop || typeof desktop.saveAttachmentFile !== 'function') {
+    alert('Desktop attachment API not available.');
+    return;
+  }
+
+  const dummyText = 'Test attachment for PROC-0001';
+  const blob = new Blob([dummyText], { type: 'text/plain' });
+  const file = new File([blob], 'test_attachment.txt', { type: 'text/plain' });
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const base64 = (reader.result as string).split(',')[1] || reader.result;
+
+    const supplierName = 'HVP';
+    const procurementRef = 'PROC-0001';
+
+    try {
+      const result = await desktop.saveAttachmentFile(
+        selectedWorkbook,
+        supplierName,
+        procurementRef,
+        file.name,
+        base64,
+      );
+
+      if (!result || !result.ok) {
+        alert('Save failed: ' + (result?.error || 'Unknown error'));
+      } else {
+        alert('Saved OK:\n' + result.relativePath);
+      }
+    } catch (e: any) {
+      alert('Save error: ' + (e?.message || String(e)));
+    }
+  };
+  reader.onerror = () => {
+    alert('Could not read test file.');
+  };
+  reader.readAsDataURL(file);
+}
+
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
@@ -213,13 +280,32 @@ function App() {
     }
   }
 
-  async function handleCreateWorkbook() {
-    try {
-      applyWorkbookResult(await window.logPro.createWorkbook())
-    } catch {
-      setErrorMessage('Could not create workbook.')
-    }
+async function testCreateWorkbookDirect() {
+  const desktop = (window as any).logProDesktop;
+  if (!desktop || typeof desktop.createWorkbook !== 'function') {
+    alert('Desktop API not available.');
+    return;
   }
+
+  try {
+    const result = await desktop.createWorkbook();
+    if (!result || !result.path) {
+      alert('Create workbook failed: no path returned.');
+      return;
+    }
+    alert('Workbook created at:\n' + result.path);
+  } catch (e: any) {
+    alert('Create workbook error: ' + (e?.message || String(e)));
+  }
+}
+
+async function handleCreateWorkbook() {
+  try {
+    applyWorkbookResult(await window.logPro.createWorkbook())
+  } catch {
+    setErrorMessage('Could not create workbook.')
+  }
+}
 
   function refreshWorkbookData() {
     if (!selectedWorkbook) return
@@ -625,11 +711,30 @@ function App() {
     )
   }
 
-  if (selectedWorkbook) {
-    return (
-      <main className="home-page">
-        <div className="sticky-header-container">
-          <header className="top-bar">
+if (selectedWorkbook) {
+  return (
+    <main className="home-page">
+      <button
+        type="button"
+        onClick={testSaveAttachment}
+        style={{
+          position: 'fixed',
+          top: 10,
+          right: 10,
+          zIndex: 9999,
+          padding: '8px 12px',
+          background: '#f59e0b',
+          color: '#000',
+          fontWeight: 700,
+          border: '2px solid #000',
+          cursor: 'pointer',
+        }}
+      >
+        TEST SAVE ATTACHMENT
+      </button>
+
+      <div className="sticky-header-container">
+        <header className="top-bar">
             <div className="brand-group">
               <div className="brand-logo-badge">
                 <Trees size={20} />
@@ -961,6 +1066,22 @@ function App() {
           <button type="button" onClick={handleCreateWorkbook}>
             Create New Workbook
           </button>
+
+         <button
+  type="button"
+  onClick={testCreateWorkbookDirect}
+  style={{
+    marginLeft: '8px',
+    padding: '8px 12px',
+    background: '#22c55e',
+    color: '#000',
+    fontWeight: 700,
+    border: '2px solid #000',
+    cursor: 'pointer',
+  }}
+>
+  TEST CREATE WORKBOOK
+</button> 
 
           <button
             type="button"

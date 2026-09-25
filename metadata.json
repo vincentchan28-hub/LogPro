@@ -1,6 +1,0 @@
-{
-  "name": "LogPro",
-  "description": "Log Procurement Tracker application for managing timber suppliers, procurements, and costing.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

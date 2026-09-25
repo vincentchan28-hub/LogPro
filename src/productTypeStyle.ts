@@ -9,15 +9,15 @@ export type ProductTypeColors = {
 }
 
 const GREEN_COLORS: ProductTypeColors = {
-  border: '2px solid #15803d',
-  background: '#86efac',
-  color: '#14532d',
+  border: '1px solid #86b98a',
+  background: '#e5f3e7',
+  color: '#285c31',
 }
 
 const BURNT_COLORS: ProductTypeColors = {
-  border: '2px solid #92400e',
-  background: '#e8c39e',
-  color: '#5c2e0e',
+  border: '1px solid #c49a72',
+  background: '#f4e8dc',
+  color: '#70451f',
 }
 
 const DEFAULT_COLORS: ProductTypeColors = {
@@ -40,11 +40,11 @@ export function productTypeTagStyle(productType: ProductTypeLike): CSSProperties
   const colors = productTypeColors(productType)
   return {
     display: 'inline-block',
-    padding: '2px 10px',
-    borderRadius: '999px',
-    fontSize: '0.78rem',
+    padding: '1px 4px',
+    borderRadius: '3px',
+    fontSize: 'calc(0.78rem - 1px)',
     fontWeight: 600,
-    lineHeight: 1.6,
+    lineHeight: 1.3,
     whiteSpace: 'nowrap',
     border: colors.border,
     backgroundColor: colors.background,

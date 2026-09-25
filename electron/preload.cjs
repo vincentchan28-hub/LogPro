@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 const api = {
+  // Workbook basics (existing)
   openWorkbook() {
     return ipcRenderer.invoke('workbook:open')
   },
@@ -36,6 +37,21 @@ const api = {
   saveCosting(workbookPath, costing) {
     return ipcRenderer.invoke('costing:save', workbookPath, costing)
   },
+
+  // Attachments
+  saveAttachmentFile(workbookPath, supplierName, procurementRef, fileName, base64Data) {
+    return ipcRenderer.invoke('attachment:saveFile', workbookPath, supplierName, procurementRef, fileName, base64Data)
+  },
+
+  readAttachmentFile(workbookPath, relativePath) {
+    return ipcRenderer.invoke('attachment:readFile', workbookPath, relativePath)
+  },
+
+  listAttachmentsForProcurement(workbookPath, supplierName, procurementRef) {
+    return ipcRenderer.invoke('attachment:listForProcurement', workbookPath, supplierName, procurementRef)
+  },
 }
 
 contextBridge.exposeInMainWorld('logProDesktop', api)
+
+console.log('[preload] logProDesktop exposed:', !!api)

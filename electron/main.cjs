@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const archiver = require('archiver');
 
 
 let mainWindow;
@@ -73,6 +74,28 @@ const workbookSheets = [
   'SpeciesDefinitions',
   'GradeDefinitions',
 ];
+
+function getAttachmentsRoot(workbookPath) {
+  const folder = path.dirname(workbookPath);
+  return path.join(folder, 'Attachments');
+}
+
+function getSupplierAttachmentsFolder(workbookPath, supplierName) {
+  const root = getAttachmentsRoot(workbookPath);
+  const safeName = supplierName
+    .replace(/[<>:"/\\|?*]/g, '_')
+    .trim()
+    .slice(0, 60);
+  return path.join(root, safeName);
+}
+
+function buildAttachmentFileName(procurementRef, originalFileName) {
+  const safeBase = (procurementRef || 'UNKNOWN')
+    .replace(/[^A-Za-z0-9_-]/g, '_')
+    .slice(0, 40);
+  const ext = path.extname(originalFileName || '').toLowerCase() || '.bin';
+  return `${safeBase}_${originalFileName}`;
+}
 
 const workbookHeaders = {
   Suppliers: [
@@ -934,6 +957,124 @@ ipcMain.handle('costing:save', async (_event, workbookPath, costing) => {
     };
   }
 });
+
+// ---------------------------------------------------------------------------
+// Attachments: save, read, list (physical files in Attachments folder)
+// ---------------------------------------------------------------------------
+
+function getAttachmentsRoot(workbookPath) {
+  const folder = path.dirname(workbookPath);
+  return path.join(folder, 'Attachments');
+}
+
+function getSupplierAttachmentsFolder(workbookPath, supplierName) {
+  const root = getAttachmentsRoot(workbookPath);
+  const safeName = supplierName
+    .replace(/[<>:"/\\|?*]/g, '_')
+    .trim()
+    .slice(0, 60);
+  return path.join(root, safeName);
+}
+
+function buildAttachmentFileName(procurementRef, originalFileName) {
+  const safeBase = (procurementRef || 'UNKNOWN')
+    .replace(/[^A-Za-z0-9_-]/g, '_')
+    .slice(0, 40);
+  const ext = path.extname(originalFileName || '').toLowerCase() || '.bin';
+  return `${safeBase}_${originalFileName}`;
+}
+
+ipcMain.handle(
+  'attachment:saveFile',
+  async (_event, workbookPath, supplierName, procurementRef, fileName, base64Data) => {
+    try {
+      if (!workbookPath || !supplierName || !fileName || !base64Data) {
+        return {
+          ok: false,
+          error: 'Missing workbook path, supplier name, file name or data.',
+          relativePath: '',
+        };
+      }
+
+      const supplierFolder = getSupplierAttachmentsFolder(workbookPath, supplierName);
+      fs.mkdirSync(supplierFolder, { recursive: true });
+
+      const safeFileName = buildAttachmentFileName(procurementRef, fileName);
+      const fullPath = path.join(supplierFolder, safeFileName);
+
+      const buffer = Buffer.from(base64Data, 'base64');
+      await retryWhileLocked('save attachment', () => {
+        fs.writeFileSync(fullPath, buffer);
+      });
+
+      const relativePath = path.relative(path.dirname(workbookPath), fullPath);
+
+      return { ok: true, error: '', relativePath, fileName: safeFileName };
+    } catch (error) {
+      console.error('Could not save attachment:', error);
+      return {
+        ok: false,
+        error: friendlyError(error, 'save the attachment file'),
+        relativePath: '',
+        fileName: '',
+      };
+    }
+  },
+);
+
+ipcMain.handle(
+  'attachment:readFile',
+  async (_event, workbookPath, relativePath) => {
+    try {
+      if (!workbookPath || !relativePath) {
+        return { base64: '', error: 'Missing workbook path or attachment path.' };
+      }
+
+      const fullPath = path.resolve(path.dirname(workbookPath), relativePath);
+
+      if (!fs.existsSync(fullPath)) {
+        return { base64: '', error: 'Attachment file not found.' };
+      }
+
+      const buffer = fs.readFileSync(fullPath);
+      return { base64: buffer.toString('base64'), error: '' };
+    } catch (error) {
+      console.error('Could not read attachment:', error);
+      return { base64: '', error: friendlyError(error, 'read the attachment file') };
+    }
+  },
+);
+
+ipcMain.handle(
+  'attachment:listForProcurement',
+  async (_event, workbookPath, supplierName, procurementRef) => {
+    try {
+      if (!workbookPath || !supplierName || !procurementRef) {
+        return { files: [], error: 'Missing workbook path, supplier or procurement reference.' };
+      }
+
+      const supplierFolder = getSupplierAttachmentsFolder(workbookPath, supplierName);
+      if (!fs.existsSync(supplierFolder)) {
+        return { files: [], error: '' };
+      }
+
+      const allFiles = fs.readdirSync(supplierFolder);
+      const prefix = (procurementRef || '').replace(/[^A-Za-z0-9_-]/g, '_');
+
+      const matching = allFiles
+        .filter((name) => name.startsWith(prefix + '_'))
+        .map((name) => ({
+          fileName: name,
+          relativePath: path.relative(path.dirname(workbookPath), path.join(supplierFolder, name)),
+        }));
+
+      return { files: matching, error: '' };
+    } catch (error) {
+      console.error('Could not list attachments:', error);
+      return { files: [], error: friendlyError(error, 'list attachment files') };
+    }
+  },
+);
 
 app.whenReady().then(() => {
   createWindow();
