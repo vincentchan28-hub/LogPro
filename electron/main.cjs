@@ -35,7 +35,7 @@ async function retryWhileLocked(label, action) {
 
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      return action();
+      return await action();
     } catch (error) {
       lastError = error;
 
@@ -1188,28 +1188,58 @@ ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
       };
     }
 
+    if (xlsxEntries.length > 1) {
+      return {
+        ok: false,
+        error: `The selected backup ZIP contains ${xlsxEntries.length} Excel workbooks. A valid LogPro backup archive must contain exactly one workbook.`,
+      };
+    }
+
     const targetFolder = path.dirname(currentWorkbookPath);
 
     // 2. Create safety backup of the existing workbook & Attachments folder
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const dateStamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const safetyZipPath = path.join(targetFolder, `Safety_Backup_Before_Restore_${dateStamp}.zip`);
+    const safetyBackupPath = path.join(targetFolder, `Safety_Backup_Before_Restore_${dateStamp}.zip`);
 
     await retryWhileLocked('create safety backup', async () => {
-      await createZipArchive(currentWorkbookPath, safetyZipPath, true);
+      await createZipArchive(currentWorkbookPath, safetyBackupPath, true);
     });
 
-    if (!fs.existsSync(safetyZipPath)) {
+    if (!fs.existsSync(safetyBackupPath)) {
       return { ok: false, error: 'Failed to create safety backup prior to restore. Aborting restore.' };
     }
 
-    // 3. Extract restore archive into targetFolder
+    // 3. Clean existing local Attachments directory for full snapshot replacement
+    const localAttachments = path.join(targetFolder, 'Attachments');
+    if (fs.existsSync(localAttachments)) {
+      try {
+        fs.rmSync(localAttachments, { recursive: true, force: true });
+      } catch (rmErr) {
+        console.warn('Could not clear local Attachments folder before restore:', rmErr);
+      }
+    }
+
+    // 4. Extract restore archive into targetFolder
     await new Promise((resolve, reject) => {
+      let settled = false;
+      const onDone = () => {
+        if (!settled) {
+          settled = true;
+          resolve();
+        }
+      };
       fs.createReadStream(selectedZipPath)
         .pipe(unzipper.Extract({ path: targetFolder }))
-        .on('close', resolve)
-        .on('error', reject);
+        .on('close', onDone)
+        .on('finish', onDone)
+        .on('error', (err) => {
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        });
     });
 
     // 4. Determine restored workbook path
