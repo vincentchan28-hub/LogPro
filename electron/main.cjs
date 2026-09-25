@@ -6,6 +6,20 @@ const XLSX = require('xlsx');
 
 let mainWindow;
 
+const ZOOM_STEP = 0.5;
+const MIN_ZOOM_LEVEL = -3;
+const MAX_ZOOM_LEVEL = 5;
+
+function zoomBy(webContents, step) {
+  const next = webContents.getZoomLevel() + step;
+  const clamped = Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, next));
+  webContents.setZoomLevel(clamped);
+}
+
+function zoomReset(webContents) {
+  webContents.setZoomLevel(0);
+}
+
 // --- Save helpers: wait and retry when OneDrive or Excel has the file locked ---
 const backedUpThisSession = new Set();
 
@@ -229,6 +243,26 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.cjs'),
     },
+  });
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (!input.control && !input.meta) return;
+
+    if (input.key === '=' || input.key === '+') {
+      event.preventDefault();
+      zoomBy(mainWindow.webContents, ZOOM_STEP);
+    } else if (input.key === '-') {
+      event.preventDefault();
+      zoomBy(mainWindow.webContents, -ZOOM_STEP);
+    } else if (input.key === '0') {
+      event.preventDefault();
+      zoomReset(mainWindow.webContents);
+    }
+  });
+
+  mainWindow.webContents.on('zoom-changed', (_event, zoomDirection) => {
+    zoomBy(mainWindow.webContents, zoomDirection === 'in' ? ZOOM_STEP : -ZOOM_STEP);
   });
 
   const developmentUrl = process.env.ELECTRON_START_URL;

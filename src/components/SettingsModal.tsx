@@ -25,6 +25,8 @@ import {
   type WorkbookResult,
   PRODUCT_TYPES,
 } from '../types'
+import { ProductTypeBadge } from './ProductTypeBadge'
+import { productTypeColors } from '../productTypeStyle'
 
 type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook'
 // The name the browser uses to remember the size of the Settings box.
@@ -1227,19 +1229,32 @@ export function SettingsModal({
                     }}
                   >
                     <div className="product-type-toggle">
-                      {PRODUCT_TYPES.map((pt) => (
-                        <button
-                          key={pt}
-                          type="button"
-                          className={`pt-pill ${selectedProductType === pt ? 'active' : ''}`}
-                          onClick={() => {
-                            setSelectedProductType(pt)
-                            setSelectedGradeForDetails(null)
-                          }}
-                        >
-                          {pt}
-                        </button>
-                      ))}
+                      {PRODUCT_TYPES.map((pt) => {
+                        const isActive = selectedProductType === pt
+                        const colors = productTypeColors(pt)
+                        return (
+                          <button
+                            key={pt}
+                            type="button"
+                            className="pt-pill"
+                            onClick={() => {
+                              setSelectedProductType(pt)
+                              setSelectedGradeForDetails(null)
+                            }}
+                            style={
+                              isActive
+                                ? {
+                                    border: colors.border,
+                                    backgroundColor: colors.background,
+                                    color: colors.color,
+                                  }
+                                : undefined
+                            }
+                          >
+                            {pt}
+                          </button>
+                        )
+                      })}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1362,9 +1377,7 @@ export function SettingsModal({
                               >
                                 {activeGradeForDetails.IsStandard ? 'PDF Standard' : 'Custom Grade'}
                               </span>
-                              <span className="badge-pill badge-emerald">
-                                {activeGradeForDetails.ProductType}
-                              </span>
+                              <ProductTypeBadge productType={activeGradeForDetails.ProductType} />
                             </div>
                             <div style={{ display: 'flex', gap: '6px' }}>
                               <button
@@ -1568,7 +1581,7 @@ export function SettingsModal({
                                     <span className="muted" style={{ fontSize: '0.8rem' }}>Universal</span>
                                   )}
                                 </td>
-                                <td>{g.ProductType}</td>
+                                <td><ProductTypeBadge productType={g.ProductType} /></td>
                                 <td className="muted">{g.SpeciesName || 'All Species'}</td>
                                 <td>
                                   <span

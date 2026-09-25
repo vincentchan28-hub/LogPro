@@ -131,6 +131,7 @@ export function ProcurementsTab({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [weeklyEstimatedTonnes, setWeeklyEstimatedTonnes] = useState<string>('')
+  const [forceWeeklyForecast, setForceWeeklyForecast] = useState(false)
   const [acceptanceDate, setAcceptanceDate] = useState('')
   const [acceptanceTime, setAcceptanceTime] = useState('')
   const [acceptanceMethod, setAcceptanceMethod] = useState<string>('In Person')
@@ -485,6 +486,7 @@ export function ProcurementsTab({
     setStartDate('')
     setEndDate('')
     setWeeklyEstimatedTonnes('')
+    setForceWeeklyForecast(false)
     setAcceptanceDate('')
     setAcceptanceTime('')
     setAcceptanceMethod('In Person')
@@ -545,6 +547,7 @@ export function ProcurementsTab({
         ? String(proc.WeeklyEstimatedTonnes)
         : '',
     )
+    setForceWeeklyForecast(Boolean(proc.ForceWeeklyForecast))
     setAcceptanceDate(proc.AcceptanceDate || '')
     setAcceptanceTime(proc.AcceptanceTime || '')
     setAcceptanceMethod(proc.AcceptanceMethod || 'In Person')
@@ -712,6 +715,7 @@ export function ProcurementsTab({
         AcceptedByPerson: acceptedByPerson.trim(),
         AcceptanceNotes: acceptanceNotes.trim(),
         Notes: generalNotes.trim(),
+        ForceWeeklyForecast: forceWeeklyForecast,
         ...spec.fields,
       }
 
@@ -781,6 +785,7 @@ export function ProcurementsTab({
         AcceptedByPerson: acceptedByPerson.trim(),
         AcceptanceNotes: acceptanceNotes.trim(),
         Notes: generalNotes.trim(),
+        ForceWeeklyForecast: forceWeeklyForecast,
       }
 
       // Check for price changes against current persisted grades
@@ -2026,6 +2031,31 @@ export function ProcurementsTab({
                         )}
                       </div>
                     )}
+
+                    {/* Weekly forecast override toggle */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          color: '#334155',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={forceWeeklyForecast}
+                          onChange={(e) => setForceWeeklyForecast(e.target.checked)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        {Boolean(startDate.trim() || endDate.trim() || harvestPeriodStart.trim() || harvestPeriodEnd.trim())
+                          ? 'Ignore this date range — keep including in the weekly delivery forecast after it ends'
+                          : 'Include in weekly delivery forecast even without a date range'}
+                      </label>
+                    </div>
                   </div>
                 )
               })()}

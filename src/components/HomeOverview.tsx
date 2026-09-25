@@ -87,20 +87,29 @@ function isProcurementInWeekRange(
   weekStartStr: string,
   weekEndStr: string,
 ): boolean {
+  const isStopped = p.Status === 'Completed' || p.Status === 'Cancelled'
+  if (isStopped) return false
+
   const range = getProcurementActiveRange(p)
-  if (range.type === 'None') return false
+
+  if (range.type === 'None') {
+    return Boolean(p.ForceWeeklyForecast)
+  }
 
   const { start, end } = range
   if (start && end) {
-    return start <= weekEndStr && end >= weekStartStr
+    if (start <= weekEndStr && end >= weekStartStr) return true
+    return Boolean(p.ForceWeeklyForecast)
   }
   if (start) {
-    return start <= weekEndStr
+    if (start <= weekEndStr) return true
+    return Boolean(p.ForceWeeklyForecast)
   }
   if (end) {
-    return end >= weekStartStr
+    if (end >= weekStartStr) return true
+    return Boolean(p.ForceWeeklyForecast)
   }
-  return false
+  return Boolean(p.ForceWeeklyForecast)
 }
 
 export function HomeOverview({

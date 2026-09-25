@@ -66,6 +66,7 @@ export type Procurement = {
   CreatedDate?: string
   ChangedBy?: string
   ChangedDate?: string
+  ForceWeeklyForecast?: boolean
 }
 
 export type ProcurementGrade = {

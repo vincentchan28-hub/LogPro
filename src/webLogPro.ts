@@ -97,6 +97,7 @@ export const HEADERS: Record<string, string[]> = {
     'CreatedDate',
     'ChangedBy',
     'ChangedDate',
+    'ForceWeeklyForecast',
   ],
   ProcurementGrades: [
     'ProcurementGradeID',
@@ -313,6 +314,7 @@ export function readProcurements(workbook: XLSX.WorkBook): Procurement[] {
       CreatedDate: String(row.CreatedDate || ''),
       ChangedBy: String(row.ChangedBy || ''),
       ChangedDate: String(row.ChangedDate || ''),
+      ForceWeeklyForecast: Boolean(row.ForceWeeklyForecast === true || row.ForceWeeklyForecast === 'true'),
     }))
     .filter((p) => p.ProcurementRef.trim() !== '')
 }
@@ -1148,6 +1150,7 @@ export const webLogPro = {
         CreatedDate: now,
         ChangedBy: 'Current User',
         ChangedDate: now,
+        ForceWeeklyForecast: Boolean((data as any).ForceWeeklyForecast),
       }
 
       procurements.push(newProcurement)
@@ -1260,6 +1263,10 @@ export const webLogPro = {
         Notes: data.Notes !== undefined ? String(data.Notes) : existing.Notes,
         ChangedBy: 'Current User',
         ChangedDate: now,
+        ForceWeeklyForecast:
+          (data as any).ForceWeeklyForecast !== undefined
+            ? Boolean((data as any).ForceWeeklyForecast)
+            : existing.ForceWeeklyForecast,
       }
 
       procurements[targetIndex] = updatedProcurement

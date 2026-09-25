@@ -6,6 +6,7 @@ import type {
   Supplier,
   SupplierContact,
 } from '../types'
+import { ProductTypeBadge } from './ProductTypeBadge'
 
 type ProcurementDetailViewProps = {
   procurement: Procurement
@@ -321,7 +322,7 @@ export function ProcurementDetailView({
                   return (
                     <tr key={String(g.ProcurementGradeID || idx)} style={{ borderTop: '1px solid #e2e8f0' }}>
                       <td style={bodyCell}>{g.Species}</td>
-                      <td style={bodyCell}>{g.ProductType}</td>
+                      <td style={bodyCell}><ProductTypeBadge productType={g.ProductType} /></td>
                       <td style={{ ...bodyCell, fontWeight: 600 }}>{g.GradeName}</td>
                       <td style={bodyCellRight}>${money(Number(g.OfferedPricePerTonne) || 0)}</td>
                       <td style={{ ...bodyCellRight, fontWeight: 600 }}>

@@ -5,6 +5,7 @@ import type {
   ProcurementGrade,
   Supplier,
 } from '../types'
+import { ProductTypeBadge } from './ProductTypeBadge'
 
 type PriceListTabProps = {
   workbookPath: string
@@ -346,7 +347,7 @@ export function PriceListTab({
                     return (
                       <tr key={key}>
                         <td>{grade.GradeName}</td>
-                        <td>{grade.ProductType}</td>
+                        <td><ProductTypeBadge productType={grade.ProductType} /></td>
                         <td>
                           AUD $
                           {Number(grade.AgreedPricePerTonne || 0).toFixed(2)}
