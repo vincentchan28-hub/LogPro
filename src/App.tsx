@@ -228,9 +228,6 @@ function App() {
     }
   }
 
-  function handleUpdateFooterClick() {
-    setIsUpdateNoticeDismissed(false)
-  }
 
   function renderUpdateNotice() {
     if (!window.logProDesktop || !updateStatus || isUpdateNoticeDismissed) return null
@@ -769,19 +766,51 @@ if (selectedWorkbook) {
   return (
     <main className="home-page">
       <div className="sticky-header-container">
-        <header className="top-bar">
-            <div className="brand-group">
-              <div className="brand-logo-badge">
-                <Trees size={24} />
-              </div>
-              <div>
-                <div className="brand-title-wrap">
-                  <h1>LogPro</h1>
-                </div>
-                <p>Timber & Log Procurement Management System</p>
-              </div>
-            </div>
-          </header>
+<header className="top-bar">
+  <div className="brand-group">
+    <div className="brand-logo-badge">
+      <Trees size={36} />
+    </div>
+    <div>
+      <div className="brand-title-wrap">
+        <h1>LogPro</h1>
+      </div>
+      <p>Timber & Log Procurement Management System</p>
+    </div>
+  </div>
+<div
+  style={{
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '2px 10px',
+    background: '#fef3c7',
+    border: '1px solid #fcd34d',
+    borderRadius: '9999px',
+    fontSize: '0.72rem',
+    fontWeight: 600,
+    color: '#92400e',
+    whiteSpace: 'nowrap',
+    alignSelf: 'flex-end',
+    marginBottom: '4px',
+  }}
+>
+    <span>v0.2.8</span>
+    {window.logProDesktop &&
+      updateStatus &&
+      updateStatus.state === 'available' && (
+        <span
+          style={{
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            color: '#b45309',
+          }}
+        >
+          • Update available
+        </span>
+      )}
+  </div>
+</header>
 
           <nav className="main-navigation">
             <div className="nav-container">
@@ -822,26 +851,6 @@ if (selectedWorkbook) {
           onRefresh={refreshWorkbookData}
           onWorkbookChanged={applyWorkbookResult}
         />
-
-        {/* Version footer */}
-        <footer className="app-version-footer">
-          <span>LogPro v{__APP_VERSION__}</span>
-          {window.logProDesktop &&
-            updateStatus &&
-            ['available', 'downloading', 'downloaded'].includes(updateStatus.state) && (
-              <button
-                type="button"
-                className="update-check-link"
-                onClick={handleUpdateFooterClick}
-              >
-                {updateStatus.state === 'downloaded'
-                  ? 'Update ready'
-                  : updateStatus.state === 'downloading'
-                    ? 'Downloading update…'
-                    : 'Update available'}
-              </button>
-            )}
-        </footer>
 
         {isSupplierFormOpen && (
           <div className="modal-backdrop">

@@ -817,6 +817,15 @@ async function handleSaveNew(e?: FormEvent) {
           if (!updateRes.error && updateRes.procurement) {
             savedProcurement = updateRes.procurement
           }
+
+// Add timeline event for document upload (only in Electron desktop app)
+if (window.logPro?.addProcurementNote) {
+  await window.logPro.addProcurementNote(
+    workbookPath,
+    savedProcurement.ProcurementRef,
+    `Document uploaded: ${attachRes.fileName}`,
+  )
+}
         } else {
           setErrorMsg(
             `Procurement ${savedProcurement.ProcurementRef} was created, but attachment could not be saved: ${attachRes.error}`,
