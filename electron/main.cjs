@@ -18,6 +18,22 @@ function sendUpdateStatus(status) {
   }
 }
 
+function safeUpdateError(error) {
+  const errorText = String(error?.message || '');
+  const statusMatch = errorText.match(/\b(401|403|404)\b/);
+  const statusCode = Number(
+    error?.statusCode ?? error?.response?.statusCode ?? error?.httpStatusCode ?? statusMatch?.[1],
+  );
+
+  if (statusCode === 404) {
+    return 'GitHub could not find an accessible published release. The release repository may be private, or the release may still be a draft.';
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return 'GitHub denied access to the update. LogPro users need a release repository they can access.';
+  }
+  return 'LogPro could not reach the update service. Check your internet connection and try again.';
+}
+
 autoUpdater.on('checking-for-update', () => {
   sendUpdateStatus({ state: 'checking' });
 });
@@ -39,8 +55,9 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 autoUpdater.on('error', (error) => {
-  console.error('Update error:', error);
-  sendUpdateStatus({ state: 'error', message: error.message || 'Could not check or download the update.' });
+  const message = safeUpdateError(error);
+  console.warn(message);
+  sendUpdateStatus({ state: 'error', message });
 });
 
 ipcMain.handle('updates:check', async () => {
@@ -51,7 +68,7 @@ ipcMain.handle('updates:check', async () => {
     await autoUpdater.checkForUpdates();
     return { ok: true };
   } catch (error) {
-    const message = error.message || 'Could not check for updates.';
+    const message = safeUpdateError(error);
     sendUpdateStatus({ state: 'error', message });
     return { ok: false, error: message };
   }
@@ -63,11 +80,13 @@ ipcMain.handle('updates:download', () => {
   }
   try {
     autoUpdater.downloadUpdate().catch((error) => {
-      sendUpdateStatus({ state: 'error', message: error.message || 'Could not download the update.' });
+      const message = safeUpdateError(error);
+      console.warn(message);
+      sendUpdateStatus({ state: 'error', message });
     });
     return { ok: true };
   } catch (error) {
-    const message = error.message || 'Could not download the update.';
+    const message = safeUpdateError(error);
     sendUpdateStatus({ state: 'error', message });
     return { ok: false, error: message };
   }
@@ -487,7 +506,7 @@ function createWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     if (!app.isPackaged) return;
     autoUpdater.checkForUpdates().catch((error) => {
-      console.error('Could not check for updates:', error);
+      console.warn(safeUpdateError(error));
     });
   });
 
@@ -496,7 +515,7 @@ function createWindow() {
   if (developmentUrl) {
     mainWindow.loadURL(developmentUrl);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist-desktop', 'index.html'));
   }
 
   mainWindow.on('close', () => {
@@ -1563,7 +1582,7 @@ app.whenReady().then(() => {
   const updateCheckTimer = setInterval(() => {
     if (!app.isPackaged) return;
     autoUpdater.checkForUpdates().catch((error) => {
-      console.error('Could not check for updates:', error);
+      console.warn(safeUpdateError(error));
     });
   }, 6 * 60 * 60 * 1000);
   updateCheckTimer.unref();

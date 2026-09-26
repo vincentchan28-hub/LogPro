@@ -1,20 +1,22 @@
 {
   "name": "logpro",
   "private": true,
-  "version": "0.2.4",
+  "version": "0.2.7",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5000",
     "electron:dev": "concurrently -k \"vite --host 127.0.0.1 --port 3000\" \"wait-on http://127.0.0.1:3000 && cross-env ELECTRON_START_URL=http://127.0.0.1:3000 electron .\"",
     "build": "tsc -b && vite build",
+    "build:desktop": "tsc -b && vite build --outDir dist-desktop",
     "lint": "oxlint",
     "preview": "vite preview --host 0.0.0.0 --port 5000",
     "smoke:browser": "node scripts/browser-smoke.mjs",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build:desktop && electron-builder"
   },
   "dependencies": {
     "archiver": "^8.0.0",
+    "electron-updater": "^6.3.4",
     "lucide-react": "^1.47.0",
     "playwright": "^1.63.0",
     "react": "^19.2.8",
@@ -31,7 +33,6 @@
     "cross-env": "^7.0.3",
     "electron": "^39.2.7",
     "electron-builder": "^26.0.12",
-    "electron-updater": "^6.3.4",
     "oxlint": "^1.81.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
@@ -41,10 +42,10 @@
     "appId": "com.logpro.app",
     "productName": "LogPro",
     "directories": {
-      "output": "dist"
+      "output": "release"
     },
     "files": [
-      "dist/**/*",
+      "dist-desktop/**/*",
       "electron/**/*",
       "package.json"
     ],

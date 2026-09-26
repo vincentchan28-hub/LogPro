@@ -1223,7 +1223,7 @@ async function handleSaveNew(e?: FormEvent) {
               flexDirection: 'column',
             }}
           >
-            {/* Header: Title + count + collapse button */}
+            {/* Header: Title + count + Add + collapse button */}
             <div
               style={{
                 display: 'flex',
@@ -1251,48 +1251,46 @@ async function handleSaveNew(e?: FormEvent) {
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsSidebarCollapsed(true)}
-                title="Collapse register"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px',
-                  color: '#64748b',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                <ChevronLeft size={18} />
-              </button>
-            </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handleStartNew}
+                  style={{
+                    width: 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 12px',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    color: 'var(--primary-dark)',
+                    background: 'rgba(2, 132, 199, 0.12)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Plus size={14} /> Add
+                </button>
 
-            {/* Quick Action: +new */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
-              <button
-                type="button"
-                onClick={handleStartNew}
-                style={{
-                  width: 'auto',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '5px 12px',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  color: '#ffffff',
-                  background: 'var(--primary)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)',
-                }}
-              >
-                <Plus size={14} /> +new
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarCollapsed(true)}
+                  title="Collapse register"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    color: '#64748b',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <ChevronLeft size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Register Search (Full Width) */}

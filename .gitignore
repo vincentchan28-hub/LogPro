@@ -9,6 +9,9 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-desktop
+dist-0.2.4-backup
+release
 dist-ssr
 *.local
 
