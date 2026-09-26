@@ -213,14 +213,14 @@ button {
 
 .brand-group {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
 }
 
 .brand-logo-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 48px;
+  min-height: 100%;
+  border-radius: 10px;
   background: linear-gradient(135deg, #0284c7, #0369a1);
   color: #ffffff;
   display: flex;
@@ -272,20 +272,21 @@ button {
   gap: 8px;
   padding: 8px 16px;
   border-radius: 6px;
-  background: #0284c7;
-  color: #ffffff;
+  background: #e2e8f0;
+  color: #334155;
   font-weight: 700;
   font-size: 0.86rem;
   letter-spacing: 0.02em;
-  border: 1px solid #0284c7;
+  border: 1px solid #cbd5e1;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+  margin-left: 12px;
 }
 
 .settings-header-button:hover {
-  background: #0369a1;
-  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4);
+  background: #cbd5e1;
+  color: #1e293b;
 }
 
 /* Settings Modal Component */
@@ -909,7 +910,8 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: none;
   margin: 0;
   background: #f1f5f9;

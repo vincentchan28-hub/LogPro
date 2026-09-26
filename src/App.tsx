@@ -229,15 +229,12 @@ function App() {
   }
 
   function handleUpdateFooterClick() {
-    if (updateStatus && ['available', 'downloading', 'downloaded'].includes(updateStatus.state)) {
-      setIsUpdateNoticeDismissed(false)
-    } else {
-      void checkForUpdates()
-    }
+    setIsUpdateNoticeDismissed(false)
   }
 
   function renderUpdateNotice() {
     if (!window.logProDesktop || !updateStatus || isUpdateNoticeDismissed) return null
+    if (!['available', 'downloading', 'downloaded'].includes(updateStatus.state)) return null
 
     const updateVersion = 'version' in updateStatus ? updateStatus.version : ''
     const title = {
@@ -775,7 +772,7 @@ if (selectedWorkbook) {
         <header className="top-bar">
             <div className="brand-group">
               <div className="brand-logo-badge">
-                <Trees size={20} />
+                <Trees size={24} />
               </div>
               <div>
                 <div className="brand-title-wrap">
@@ -783,18 +780,6 @@ if (selectedWorkbook) {
                 </div>
                 <p>Timber & Log Procurement Management System</p>
               </div>
-            </div>
-
-            <div className="top-bar-actions">
-              <button
-                type="button"
-                className="settings-header-button"
-                onClick={() => setIsSettingsOpen(true)}
-                title="Settings & Administration"
-              >
-                <SettingsIcon size={16} />
-                <span>Settings</span>
-              </button>
             </div>
           </header>
 
@@ -811,6 +796,16 @@ if (selectedWorkbook) {
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              className="settings-header-button"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings & Administration"
+            >
+              <SettingsIcon size={16} />
+              <span>Settings</span>
+            </button>
           </nav>
         </div>
 
@@ -831,20 +826,21 @@ if (selectedWorkbook) {
         {/* Version footer */}
         <footer className="app-version-footer">
           <span>LogPro v{__APP_VERSION__}</span>
-          {window.logProDesktop && (
-            <button
-              type="button"
-              className="update-check-link"
-              onClick={handleUpdateFooterClick}
-              disabled={updateStatus?.state === 'checking'}
-            >
-              {updateStatus?.state === 'available'
-                ? 'Update available'
-                : updateStatus?.state === 'downloaded'
+          {window.logProDesktop &&
+            updateStatus &&
+            ['available', 'downloading', 'downloaded'].includes(updateStatus.state) && (
+              <button
+                type="button"
+                className="update-check-link"
+                onClick={handleUpdateFooterClick}
+              >
+                {updateStatus.state === 'downloaded'
                   ? 'Update ready'
-                  : 'Check for updates'}
-            </button>
-          )}
+                  : updateStatus.state === 'downloading'
+                    ? 'Downloading update…'
+                    : 'Update available'}
+              </button>
+            )}
         </footer>
 
         {isSupplierFormOpen && (
