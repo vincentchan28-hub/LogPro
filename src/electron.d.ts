@@ -8,6 +8,7 @@ import type {
   SpeciesDefinition,
   GradeDefinition,
   WorkbookResult,
+  TimelineEvent,
 } from './types'
 import type {
   CostingInput,
@@ -131,7 +132,23 @@ declare global {
 
       getPriceHistory: (
         workbookPath: string,
+        p      deleteProcurement: (
+        workbookPath: string,
+        procurementRef: string,
+      ) => Promise<{ error: string }>
+
+      getProcurementTimeline: (workbookPath: string, procurementRef: string) => TimelineEvent[]
+
+      addProcurementNote: (
+        workbookPath: string,
+        procurementRef: string,
+        noteText: string,
+      ) => Promise<{ error: string }>
+
+      getPriceHistory: (
+        workbookPath: string,
         procurementRef?: string,
+      ) => PriceHistory[]rocurementRef?: string,
       ) => PriceHistory[]
 
       recordPriceHistory: (

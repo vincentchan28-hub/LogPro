@@ -1,12 +1,14 @@
-import type { CSSProperties } from 'react'
-import { Pencil, Paperclip, X } from 'lucide-react'
+import { useState, type CSSProperties } from 'react'
+import { Pencil, Paperclip, X, History } from 'lucide-react'
 import type {
   Procurement,
   ProcurementGrade,
   Supplier,
   SupplierContact,
+  TimelineEvent,
 } from '../types'
 import { ProductTypeBadge } from './ProductTypeBadge'
+import { ProcurementTimelineModal } from './ProcurementTimelineModal'
 
 type ProcurementDetailViewProps = {
   procurement: Procurement
@@ -16,6 +18,7 @@ type ProcurementDetailViewProps = {
   onEdit: () => void
   onClose: () => void
   onOpenSpec: () => void
+  workbookPath: string
 }
 
 const sectionStyle: CSSProperties = {
@@ -124,8 +127,20 @@ export function ProcurementDetailView({
   onEdit,
   onClose,
   onOpenSpec,
+  workbookPath,
 }: ProcurementDetailViewProps) {
   const hasSpec = Boolean(procurement.LogSpecFileID)
+  const [isTimelineOpen, setIsTimelineOpen] = useState(false)
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
+
+  function openTimeline() {
+    try {
+      setTimelineEvents(window.logPro.getProcurementTimeline(workbookPath, procurement.ProcurementRef))
+    } catch {
+      setTimelineEvents([])
+    }
+    setIsTimelineOpen(true)
+  }
 
   let totalAgreed = 0
   let totalDelivered = 0
@@ -193,37 +208,59 @@ export function ProcurementDetailView({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
-            className="secondary-button"
-            onClick={onClose}
+            onClick={openTimeline}
             style={{
               width: 'auto',
+              height: '38px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '8px 16px',
+              padding: '0 16px',
+              fontWeight: 600,
+              color: '#334155',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
               borderRadius: '0px',
+              cursor: 'pointer',
             }}
           >
-            <X size={15} /> Close
+            <History size={15} /> Timeline
           </button>
           <button
             type="button"
             onClick={onEdit}
             style={{
               width: 'auto',
+              height: '38px',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
-              padding: '8px 18px',
+              padding: '0 18px',
               fontWeight: 700,
-              color: '#ffffff',
-              background: 'var(--primary)',
-              border: 'none',
+              color: '#475569',
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
               borderRadius: '0px',
               cursor: 'pointer',
             }}
           >
-            <Pencil size={15} /> Edit Procurement
+            <Pencil size={15} /> Edit
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onClose}
+            style={{
+              width: 'auto',
+              height: '38px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '0 16px',
+              borderRadius: '0px',
+            }}
+          >
+            <X size={15} /> Close
           </button>
         </div>
       </div>
@@ -424,39 +461,68 @@ export function ProcurementDetailView({
       >
         <button
           type="button"
-          className="secondary-button"
-          onClick={onClose}
+          onClick={openTimeline}
           style={{
             width: 'auto',
+            height: '38px',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '9px 18px',
+            padding: '0 16px',
+            fontWeight: 600,
+            color: '#334155',
+            background: '#ffffff',
+            border: '1px solid #cbd5e1',
             borderRadius: '0px',
+            cursor: 'pointer',
           }}
         >
-          <X size={15} /> Close
+          <History size={15} /> Timeline
         </button>
         <button
           type="button"
           onClick={onEdit}
           style={{
             width: 'auto',
+            height: '38px',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '9px 20px',
+            padding: '0 20px',
             fontWeight: 700,
-            color: '#ffffff',
-            background: 'var(--primary)',
-            border: 'none',
+            color: '#475569',
+            background: '#f1f5f9',
+            border: '1px solid #cbd5e1',
             borderRadius: '0px',
             cursor: 'pointer',
           }}
         >
-          <Pencil size={15} /> Edit Procurement
+          <Pencil size={15} /> Edit
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onClose}
+          style={{
+            width: 'auto',
+            height: '38px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '0 18px',
+            borderRadius: '0px',
+          }}
+        >
+          <X size={15} /> Close
         </button>
       </div>
+
+      <ProcurementTimelineModal
+        isOpen={isTimelineOpen}
+        onClose={() => setIsTimelineOpen(false)}
+        procurementRef={procurement.ProcurementRef}
+        events={timelineEvents}
+      />
     </div>
   )
 }

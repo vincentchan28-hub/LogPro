@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Info,
   Truck,
+  MoreVertical,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -119,6 +120,57 @@ export function ProcurementsTab({
   const [successMsg, setSuccessMsg] = useState('')
   const [isSaving, setIsSaving] = useState(false)
 
+  // 3-dot menu (edit mode) & delete confirmation
+  const [isProcMenuOpen, setIsProcMenuOpen] = useState(false)
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0)
+  const [deletePromptPos, setDeletePromptPos] = useState({ top: '30%', left: '50%' })
+
+  // Timeline note (Section 6)
+  const [timelineNoteText, setTimelineNoteText] = useState('')
+  const [isSavingNote, setIsSavingNote] = useState(false)
+  const [noteAddedMsg, setNoteAddedMsg] = useState('')
+
+  async function handleAddTimelineNote() {
+    if (!selectedProcRef || !timelineNoteText.trim()) return
+    setIsSavingNote(true)
+    setNoteAddedMsg('')
+    try {
+      const res = await window.logPro.addProcurementNote(
+        workbookPath,
+        selectedProcRef,
+        timelineNoteText.trim(),
+      )
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setTimelineNoteText('')
+        setNoteAddedMsg('Note added to the timeline.')
+      }
+    } finally {
+      setIsSavingNote(false)
+    }
+  }
+
+  function openDeletePrompt() {
+    setIsProcMenuOpen(false)
+    setDeleteStep(1)
+  }
+
+  function confirmFirstDeletePrompt() {
+    setDeletePromptPos({
+      top: `${10 + Math.random() * 55}%`,
+      left: `${10 + Math.random() * 55}%`,
+    })
+    setDeleteStep(2)
+  }
+
+  async function confirmSecondDeletePrompt() {
+    setDeleteStep(0)
+    if (selectedProcRef) {
+      await handleDeleteProcurement(selectedProcRef)
+    }
+  }
+
   // Form State
   const [supplierId, setSupplierId] = useState('')
   const [contactId, setContactId] = useState('')
@@ -184,6 +236,18 @@ export function ProcurementsTab({
   useEffect(() => {
     queueMicrotask(loadData)
   }, [loadData, suppliers])
+
+  // Warn before closing/reloading the tab if there are unsaved changes
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if ((mode === 'new' || mode === 'edit') && isDirty) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [mode, isDirty])
 
   // Handle preselected supplier / contact when navigated from Global Contacts tab
   useEffect(() => {
@@ -590,6 +654,26 @@ export function ProcurementsTab({
     resetFormFields()
     setMode('blank')
     setIsDirty(false)
+  }
+
+  async function handleDeleteProcurement(procurementRef: string) {
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await window.logPro.deleteProcurement(workbookPath, procurementRef)
+      if (res.error) {
+        setErrorMsg(res.error)
+        return
+      }
+      resetFormFields()
+      setMode('blank')
+      setIsDirty(false)
+      loadData()
+      onDataChanged()
+      setSuccessMsg(`Procurement ${procurementRef} was deleted.`)
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not delete the procurement.')
+    }
   }
 
   function handleCancelForm() {
@@ -1028,59 +1112,6 @@ export function ProcurementsTab({
           </p>
         </div>
 
-        {/* Top-Right Action Buttons: Cancel and Save in edit/new mode */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {(mode === 'new' || mode === 'edit') && (
-            <>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={handleCancelForm}
-                style={{
-                  width: 'auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '9px 16px',
-                }}
-              >
-                <RotateCcw size={16} /> Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => {
-                  const formEl = document.getElementById('procurement-form') as HTMLFormElement | null
-                  if (formEl) {
-                    formEl.requestSubmit()
-                  }
-                }}
-                style={{
-                  width: 'auto',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '9px 20px',
-                  fontSize: '0.92rem',
-                  fontWeight: 700,
-                  color: '#ffffff',
-                  background: 'var(--primary)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
-                }}
-              >
-                <Save size={16} />
-                {isSaving
-                  ? 'Saving...'
-                  : mode === 'edit'
-                  ? 'Save Changes'
-                  : 'Save Procurement'}
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Alert notices */}
@@ -1525,6 +1556,7 @@ export function ProcurementsTab({
             onEdit={handleEditSelected}
             onClose={handleCloseView}
             onOpenSpec={() => void handleOpenSpec(selectedProcurement.LogSpecFileID || '')}
+            workbookPath={workbookPath}
           />
         )}
 
@@ -1544,87 +1576,92 @@ export function ProcurementsTab({
               onSubmit={mode === 'edit' ? handleUpdateSelected : handleSaveNew}
               onChange={() => setIsDirty(true)}
             >
-              {/* Top Actions Bar - Right Aligned */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '10px',
-                  alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  flexWrap: 'wrap',
-                  marginBottom: '20px',
-                  paddingBottom: '14px',
-                  borderBottom: '1px solid var(--border)',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={handleCancelForm}
-                  style={{
-                    width: 'auto',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 16px',
-                    background: '#ffffff',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '0px',
-                    fontWeight: 600,
-                    fontSize: '0.88rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <RotateCcw size={15} /> Cancel
-                </button>
-
-                {mode === 'edit' && (
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={handleSaveNew}
-                    style={{
-                      width: 'auto',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 16px',
-                      background: '#ffffff',
-                      color: '#334155',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '0px',
-                      fontWeight: 600,
-                      fontSize: '0.88rem',
-                      cursor: 'pointer',
-                    }}
-                    title="Save current details as a brand new agreement"
-                  >
-                    <Plus size={15} /> Save as New (Duplicate)
-                  </button>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  style={{
-                    width: 'auto',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 20px',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    color: '#ffffff',
-                    background: '#475569',
-                    border: '1px solid #334155',
-                    borderRadius: '0px',
-                    cursor: isSaving ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  <Save size={16} />
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
+              {mode === 'edit' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsProcMenuOpen((v) => !v)}
+                      title="More options"
+                      style={{
+                        width: 'auto',
+                        height: '34px',
+                        padding: '0 10px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        color: '#334155',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {isProcMenuOpen && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: '4px',
+                          background: '#ffffff',
+                          border: '1px solid var(--border)',
+                          borderRadius: '6px',
+                          boxShadow: '0 4px 12px rgba(15,23,42,0.15)',
+                          zIndex: 20,
+                          minWidth: '190px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProcMenuOpen(false)
+                            handleSaveNew()
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 14px',
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#334155',
+                            fontWeight: 600,
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Plus size={14} /> Save as New (Duplicate)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openDeletePrompt}
+                          style={{
+                            width: '100%',
+                            padding: '8px 14px',
+                            background: 'transparent',
+                            border: 'none',
+                            borderTop: '1px solid #f1f5f9',
+                            color: '#dc2626',
+                            fontWeight: 600,
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Section 1: Supplier & Agreement Info */}
               {(() => {
@@ -2787,6 +2824,54 @@ export function ProcurementsTab({
                     }}
                   />
                 </div>
+
+                {mode === 'edit' && selectedProcRef && (
+                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px dashed var(--border)' }}>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                      Add a Timeline Note
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                      <textarea
+                        rows={2}
+                        placeholder="e.g. Called supplier to confirm harvest delay"
+                        value={timelineNoteText}
+                        onChange={(e) => setTimelineNoteText(e.target.value)}
+                        style={{
+                          flex: 1,
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: '#fff',
+                          fontSize: '0.85rem',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleAddTimelineNote()}
+                        disabled={isSavingNote || !timelineNoteText.trim()}
+                        style={{
+                          width: 'auto',
+                          padding: '8px 14px',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          borderRadius: '6px',
+                          background: '#0284c7',
+                          color: '#ffffff',
+                          border: 'none',
+                          cursor: isSavingNote ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {isSavingNote ? 'Adding...' : 'Add Note'}
+                      </button>
+                    </div>
+                    {noteAddedMsg && (
+                      <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#15803d' }}>{noteAddedMsg}</p>
+                    )}
+                    <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: 'var(--muted)' }}>
+                      Separate from General Notes above — this appears on the Timeline right away.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Bottom Actions Bar - Right Aligned */}
@@ -2822,31 +2907,6 @@ export function ProcurementsTab({
                   <RotateCcw size={15} /> Cancel
                 </button>
 
-                {mode === 'edit' && (
-                  <button
-                    type="button"
-                    disabled={isSaving}
-                    onClick={handleSaveNew}
-                    style={{
-                      width: 'auto',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 16px',
-                      background: '#ffffff',
-                      color: '#334155',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '0px',
-                      fontWeight: 600,
-                      fontSize: '0.88rem',
-                      cursor: 'pointer',
-                    }}
-                    title="Save current details as a brand new agreement"
-                  >
-                    <Plus size={15} /> Save as New (Duplicate)
-                  </button>
-                )}
-
                 <button
                   type="submit"
                   disabled={isSaving}
@@ -2858,9 +2918,9 @@ export function ProcurementsTab({
                     padding: '8px 20px',
                     fontSize: '0.88rem',
                     fontWeight: 700,
-                    color: '#ffffff',
-                    background: '#475569',
-                    border: '1px solid #334155',
+                    color: mode === 'edit' ? (isDirty ? '#15803d' : '#475569') : '#ffffff',
+                    background: mode === 'edit' ? (isDirty ? '#dcfce7' : '#f1f5f9') : '#475569',
+                    border: mode === 'edit' ? (isDirty ? '1.5px solid #22c55e' : '1px solid #cbd5e1') : '1px solid #334155',
                     borderRadius: '0px',
                     cursor: isSaving ? 'not-allowed' : 'pointer',
                   }}
@@ -2903,6 +2963,61 @@ export function ProcurementsTab({
           onDataChanged?.()
         }}
       />
+
+      {deleteStep === 1 && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 'min(90%, 440px)', padding: '22px 24px', borderRadius: '12px', background: '#fef2f2', border: '1px solid #fecaca', boxShadow: '0 20px 48px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 10px', color: '#991b1b' }}>Delete this procurement?</h3>
+            <p style={{ margin: '0 0 18px', color: '#7f1d1d', fontSize: '0.92rem', lineHeight: 1.5 }}>
+              This will delete procurement <strong>{selectedProcRef}</strong>
+              {currentSupplier?.SupplierName ? ` (${currentSupplier.SupplierName})` : ''} from the workbook.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" className="secondary-button" onClick={() => setDeleteStep(0)} style={{ width: 'auto', padding: '8px 16px' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={confirmFirstDeletePrompt} style={{ width: 'auto', padding: '8px 18px', background: '#dc2626', border: 'none', color: '#ffffff', fontWeight: 700, borderRadius: '6px', cursor: 'pointer' }}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteStep === 2 && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2100 }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: deletePromptPos.top,
+              left: deletePromptPos.left,
+              transform: 'translate(-50%, -50%)',
+              width: 'min(90%, 440px)',
+              padding: '22px 24px',
+              borderRadius: '12px',
+              background: '#fecaca',
+              border: '2px solid #b91c1c',
+              boxShadow: '0 20px 48px rgba(0,0,0,0.4)',
+            }}
+          >
+            <h3 className="flash-warning" style={{ margin: '0 0 10px', color: '#7f1d1d' }}>
+              ⚠ This cannot be undone
+            </h3>
+            <p style={{ margin: '0 0 18px', color: '#7f1d1d', fontSize: '0.92rem', lineHeight: 1.5 }}>
+              Deleting <strong>{selectedProcRef}</strong> permanently removes it and its price history from
+              the workbook. There is no way to recover it afterwards.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" className="secondary-button" onClick={() => setDeleteStep(0)} style={{ width: 'auto', padding: '8px 16px' }}>
+                Cancel
+              </button>
+              <button type="button" onClick={() => void confirmSecondDeletePrompt()} style={{ width: 'auto', padding: '8px 18px', background: '#7f1d1d', border: 'none', color: '#ffffff', fontWeight: 700, borderRadius: '6px', cursor: 'pointer' }}>
+                Yes, delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PriceRevisionModal
         isOpen={isPriceRevisionModalOpen}

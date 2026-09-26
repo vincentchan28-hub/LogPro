@@ -1188,7 +1188,27 @@ button {
   position: fixed;
   bottom: 8px;
   right: 12px;
+  font-size/* App version footer - bottom right */
+.app-version-footer {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
   font-size: 0.75rem;
+  color: var(--muted, #64748b);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  z-index: 100;
+}
+
+@keyframes flash-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.flash-warning {
+  animation: flash-warning 0.8s ease-in-out infinite;
+}: 0.75rem;
   color: var(--muted, #64748b);
   font-weight: 500;
   letter-spacing: 0.02em;

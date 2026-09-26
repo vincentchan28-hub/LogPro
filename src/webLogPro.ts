@@ -9,6 +9,7 @@ import {
   type SpeciesDefinition,
   type GradeDefinition,
   type WorkbookResult,
+  type TimelineEvent,
   STANDARD_GRADES,
 } from './types'
 import type {
@@ -98,6 +99,7 @@ export const HEADERS: Record<string, string[]> = {
     'ChangedBy',
     'ChangedDate',
     'ForceWeeklyForecast',
+    'ActivityLog',
   ],
   ProcurementGrades: [
     'ProcurementGradeID',
@@ -112,6 +114,7 @@ export const HEADERS: Record<string, string[]> = {
     'DeliveredTonnes',
     'RemainingTonnes',
     'Notes',
+    'CreatedAt',
   ],
   PriceHistory: [
     'PriceHistoryID',
@@ -315,6 +318,7 @@ export function readProcurements(workbook: XLSX.WorkBook): Procurement[] {
       ChangedBy: String(row.ChangedBy || ''),
       ChangedDate: String(row.ChangedDate || ''),
       ForceWeeklyForecast: Boolean(row.ForceWeeklyForecast === true || row.ForceWeeklyForecast === 'true'),
+      ActivityLog: String(row.ActivityLog || ''),
     }))
     .filter((p) => p.ProcurementRef.trim() !== '')
 }
@@ -346,6 +350,7 @@ export function readProcurementGrades(
         DeliveredTonnes: deliveredTonnes,
         RemainingTonnes: remainingTonnes,
         Notes: String(row.Notes || ''),
+        CreatedAt: String(row.CreatedAt || ''),
       }
     })
     .filter((g) => g.ProcurementRef.trim() !== '')
@@ -1151,6 +1156,7 @@ export const webLogPro = {
         ChangedBy: 'Current User',
         ChangedDate: now,
         ForceWeeklyForecast: Boolean((data as any).ForceWeeklyForecast),
+        ActivityLog: '',
       }
 
       procurements.push(newProcurement)
@@ -1179,6 +1185,7 @@ export const webLogPro = {
           DeliveredTonnes: delivered,
           RemainingTonnes: remaining,
           Notes: String(g.Notes || ''),
+          CreatedAt: now,
         }
         savedGrades.push(newGrade)
         existingAllGrades.push(newGrade)
@@ -1279,12 +1286,24 @@ export const webLogPro = {
       )
 
       let nextGradeId = Math.max(0, ...allGrades.map((g) => Number(g.ProcurementGradeID) || 0)) + 1
+      const existingRefGrades = allGrades.filter(
+        (g) => g.ProcurementRef.trim().toLowerCase() === procurementRef.trim().toLowerCase(),
+      )
+
       const updatedGradesList: ProcurementGrade[] = []
+      const nowForGrades = formatTimestamp()
 
       for (const g of grades) {
         const agreed = Number(g.AgreedTonnes) || 0
         const delivered = Number(g.DeliveredTonnes) || 0
         const remaining = Math.max(0, agreed - delivered)
+
+        const matchedExisting = existingRefGrades.find(
+          (og) =>
+            (g.ProcurementGradeID && og.ProcurementGradeID === g.ProcurementGradeID) ||
+            (og.GradeName.trim().toLowerCase() === String(g.GradeName || '').trim().toLowerCase() &&
+              og.ProductType === g.ProductType),
+        )
 
         const newGrade: ProcurementGrade = {
           ProcurementGradeID: g.ProcurementGradeID || nextGradeId++,
@@ -1299,6 +1318,7 @@ export const webLogPro = {
           DeliveredTonnes: delivered,
           RemainingTonnes: remaining,
           Notes: String(g.Notes || ''),
+          CreatedAt: matchedExisting?.CreatedAt || nowForGrades,
         }
         updatedGradesList.push(newGrade)
       }
@@ -1309,11 +1329,6 @@ export const webLogPro = {
         'ProcurementGrades',
         HEADERS.ProcurementGrades,
         combinedGrades as any,
-      )
-
-      // Audit Price History for any price changes
-      const existingRefGrades = allGrades.filter(
-        (g) => g.ProcurementRef.trim().toLowerCase() === procurementRef.trim().toLowerCase(),
       )
       const currentHistory = readPriceHistory(workbook)
       let historyAdded = false
@@ -1374,6 +1389,151 @@ export const webLogPro = {
         grades: [],
         error: e?.message || String(e),
       }
+    }
+  },
+
+  async deleteProcurement(
+    workbookPath: string,
+    procurementRef: string,
+  ): Promise<{ error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { error: 'No workbook is open.' }
+
+    try {
+      const procurements = readProcurements(workbook).filter(
+        (p) => p.ProcurementRef.trim() !== procurementRef.trim(),
+      )
+      setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
+
+      const grades = readProcurementGrades(workbook).filter(
+        (g) => g.ProcurementRef.trim() !== procurementRef.trim(),
+      )
+      setRows(workbook, 'ProcurementGrades', HEADERS.ProcurementGrades, grades as any)
+
+      saveWorkbookToStorage(workbookPath, workbook)
+      return { error: '' }
+    } catch (e: any) {
+      return { error: e?.message || String(e) }
+    }
+  },
+
+  getProcurementTimeline(workbookPath: string, procurementRef: string): TimelineEvent[] {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return []
+
+    const procurement = readProcurements(workbook).find(
+      (p) => p.ProcurementRef.trim() === procurementRef.trim(),
+    )
+    if (!procurement) return []
+
+    const events: TimelineEvent[] = []
+
+    if (procurement.CreatedDate) {
+      events.push({
+        id: 'created',
+        date: procurement.CreatedDate,
+        type: 'created',
+        title: 'Procurement created',
+        body: `${procurement.ProcurementRef} was created${
+          procurement.CreatedBy ? ` by ${procurement.CreatedBy}` : ''
+        }.`,
+      })
+    }
+
+    const grades = readProcurementGrades(workbook, procurementRef)
+    const gradeGroups = new Map<string, typeof grades>()
+    for (const g of grades) {
+      const key = String((g as any).CreatedAt || '').trim()
+      if (!key) continue
+      if (!gradeGroups.has(key)) gradeGroups.set(key, [])
+      gradeGroups.get(key)!.push(g)
+    }
+    let gradeGroupIndex = 0
+    for (const [createdAt, rows] of gradeGroups.entries()) {
+      gradeGroupIndex += 1
+      const lines = rows
+        .map(
+          (g) =>
+            `${g.GradeName} (${g.ProductType}): offered $${Number(g.OfferedPricePerTonne || 0).toFixed(
+              2,
+            )}/t, agreed $${Number(g.AgreedPricePerTonne || 0).toFixed(2)}/t, ${Number(
+              g.AgreedTonnes || 0,
+            )} t agreed`,
+        )
+        .join('\n')
+      events.push({
+        id: `grades-${gradeGroupIndex}`,
+        date: createdAt,
+        type: 'grades_added',
+        title: rows.length > 1 ? 'Grades added' : 'Grade added',
+        body: lines,
+      })
+    }
+
+    const history = readPriceHistory(workbook, procurementRef)
+    history.forEach((h, idx) => {
+      events.push({
+        id: `price-${idx}`,
+        date: h.EffectiveDateTime || h.RecordedDateTime,
+        type: 'price_change',
+        title: 'Price changed',
+        body: `${h.GradeName} (${h.ProductType}): $${Number(h.PreviousPrice).toFixed(2)} → $${Number(
+          h.NewPrice,
+        ).toFixed(2)} — ${h.Reason}${h.Notes ? `\n${h.Notes}` : ''}`,
+      })
+    })
+
+    try {
+      const log: { date: string; text: string }[] = procurement.ActivityLog
+        ? JSON.parse(procurement.ActivityLog)
+        : []
+      log.forEach((entry, idx) => {
+        events.push({
+          id: `note-${idx}`,
+          date: entry.date,
+          type: 'note',
+          title: 'Note added',
+          body: entry.text,
+        })
+      })
+    } catch {
+      // Malformed activity log - skip notes rather than crash the timeline
+    }
+
+    return events.sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0))
+  },
+
+  async addProcurementNote(
+    workbookPath: string,
+    procurementRef: string,
+    noteText: string,
+  ): Promise<{ error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { error: 'No workbook is open.' }
+
+    const clean = noteText.trim()
+    if (!clean) return { error: 'Note text is empty.' }
+
+    try {
+      const procurements = readProcurements(workbook)
+      const idx = procurements.findIndex((p) => p.ProcurementRef.trim() === procurementRef.trim())
+      if (idx === -1) return { error: `Procurement ${procurementRef} was not found.` }
+
+      let log: { date: string; text: string }[] = []
+      try {
+        log = procurements[idx].ActivityLog ? JSON.parse(procurements[idx].ActivityLog as string) : []
+      } catch {
+        log = []
+      }
+      log.push({ date: formatTimestamp(), text: clean })
+
+      procurements[idx] = { ...procurements[idx], ActivityLog: JSON.stringify(log) }
+      setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+
+      return { error: '' }
+    } catch (e: any) {
+      return { error: e?.message || String(e) }
     }
   },
 

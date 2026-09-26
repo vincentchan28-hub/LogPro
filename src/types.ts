@@ -67,6 +67,7 @@ export type Procurement = {
   ChangedBy?: string
   ChangedDate?: string
   ForceWeeklyForecast?: boolean
+  ActivityLog?: string
 }
 
 export type ProcurementGrade = {
@@ -82,6 +83,7 @@ export type ProcurementGrade = {
   DeliveredTonnes: number
   RemainingTonnes: number
   Notes?: string
+  CreatedAt?: string
 }
 
 export type SpeciesDefinition = {
@@ -116,6 +118,14 @@ export type PriceHistory = {
   Notes: string
   RecordedBy: string
   RecordedDateTime: string
+}
+
+export type TimelineEvent = {
+  id: string
+  date: string
+  type: 'created' | 'grades_added' | 'price_change' | 'note'
+  title: string
+  body: string
 }
 
 export const AGREEMENT_TYPES = [
