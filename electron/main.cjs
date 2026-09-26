@@ -2,11 +2,84 @@ const { app, BrowserWindow, dialog, ipcMain, net, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
-const archiver = require('archiver');
+const { ZipArchive } = require('archiver');
 const unzipper = require('unzipper');
+const { autoUpdater } = require('electron-updater');
 
 
 let mainWindow;
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
+
+function sendUpdateStatus(status) {
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('updates:status', status);
+  }
+}
+
+autoUpdater.on('checking-for-update', () => {
+  sendUpdateStatus({ state: 'checking' });
+});
+
+autoUpdater.on('update-available', (info) => {
+  sendUpdateStatus({ state: 'available', version: info.version });
+});
+
+autoUpdater.on('update-not-available', () => {
+  sendUpdateStatus({ state: 'up-to-date' });
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdateStatus({ state: 'downloading', percent: progress.percent });
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateStatus({ state: 'downloaded', version: info.version });
+});
+
+autoUpdater.on('error', (error) => {
+  console.error('Update error:', error);
+  sendUpdateStatus({ state: 'error', message: error.message || 'Could not check or download the update.' });
+});
+
+ipcMain.handle('updates:check', async () => {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates are only available in the installed desktop app.' };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+    return { ok: true };
+  } catch (error) {
+    const message = error.message || 'Could not check for updates.';
+    sendUpdateStatus({ state: 'error', message });
+    return { ok: false, error: message };
+  }
+});
+
+ipcMain.handle('updates:download', () => {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates are only available in the installed desktop app.' };
+  }
+  try {
+    autoUpdater.downloadUpdate().catch((error) => {
+      sendUpdateStatus({ state: 'error', message: error.message || 'Could not download the update.' });
+    });
+    return { ok: true };
+  } catch (error) {
+    const message = error.message || 'Could not download the update.';
+    sendUpdateStatus({ state: 'error', message });
+    return { ok: false, error: message };
+  }
+});
+
+ipcMain.handle('updates:install', () => {
+  if (!app.isPackaged) {
+    return { ok: false, error: 'Updates are only available in the installed desktop app.' };
+  }
+  autoUpdater.quitAndInstall(false, true);
+  return { ok: true };
+});
 
 const ZOOM_STEP = 0.5;
 const MIN_ZOOM_LEVEL = -3;
@@ -410,6 +483,13 @@ function createWindow() {
 
   mainWindow.on('resize', saveBounds);
   mainWindow.on('move', saveBounds);
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (!app.isPackaged) return;
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error('Could not check for updates:', error);
+    });
+  });
 
   const developmentUrl = process.env.ELECTRON_START_URL;
 
@@ -1242,32 +1322,79 @@ ipcMain.handle(
 
 function createZipArchive(sourceWorkbookPath, destinationZipPath, includeAttachments) {
   return new Promise((resolve, reject) => {
+    const workbookFileName = path.basename(sourceWorkbookPath);
+    const attachmentsFolder = getAttachmentsRoot(sourceWorkbookPath);
+    const expectedAttachments = new Set();
+
+    try {
+      if (!fs.existsSync(sourceWorkbookPath) || fs.statSync(sourceWorkbookPath).size === 0) {
+        throw new Error('The workbook file is missing or empty.');
+      }
+
+      if (includeAttachments && fs.existsSync(attachmentsFolder)) {
+        const collectFiles = (folder) => {
+          for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+            const entryPath = path.join(folder, entry.name);
+            if (entry.isDirectory()) {
+              collectFiles(entryPath);
+            } else if (entry.isFile()) {
+              expectedAttachments.add(
+                `Attachments/${path.relative(attachmentsFolder, entryPath).split(path.sep).join('/')}`,
+              );
+            }
+          }
+        };
+        collectFiles(attachmentsFolder);
+      }
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     const output = fs.createWriteStream(destinationZipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
 
-    output.on('close', () => {
-      resolve();
-    });
+    output.on('error', fail);
+    archive.on('warning', fail);
+    archive.on('error', fail);
+    output.on('close', async () => {
+      if (settled) return;
+      try {
+        if (archive.pointer() === 0 || fs.statSync(destinationZipPath).size === 0) {
+          throw new Error('The backup archive was created without any data.');
+        }
 
-    archive.on('error', (err) => {
-      reject(err);
+        const zip = await unzipper.Open.file(destinationZipPath);
+        const archivedFiles = new Set(zip.files.map((entry) => entry.path));
+        const workbookEntry = zip.files.find((entry) => entry.path === workbookFileName);
+        if (!workbookEntry || workbookEntry.uncompressedSize === 0) {
+          throw new Error('The backup archive does not contain the workbook.');
+        }
+        for (const attachmentPath of expectedAttachments) {
+          if (!archivedFiles.has(attachmentPath)) {
+            throw new Error(`The backup archive is missing an attachment: ${attachmentPath}`);
+          }
+        }
+
+        settled = true;
+        resolve();
+      } catch (error) {
+        fail(error);
+      }
     });
 
     archive.pipe(output);
-
-    // 1. Current Excel workbook at root of the ZIP
-    const workbookFileName = path.basename(sourceWorkbookPath);
     archive.file(sourceWorkbookPath, { name: workbookFileName });
-
-    // 2. Attachments folder
-    if (includeAttachments) {
-      const attachmentsFolder = getAttachmentsRoot(sourceWorkbookPath);
-      if (fs.existsSync(attachmentsFolder)) {
-        archive.directory(attachmentsFolder, 'Attachments');
-      }
+    if (includeAttachments && fs.existsSync(attachmentsFolder)) {
+      archive.directory(attachmentsFolder, 'Attachments');
     }
-
-    archive.finalize();
+    archive.finalize().catch(fail);
   });
 }
 
@@ -1432,6 +1559,14 @@ ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
 
 app.whenReady().then(() => {
   createWindow();
+
+  const updateCheckTimer = setInterval(() => {
+    if (!app.isPackaged) return;
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error('Could not check for updates:', error);
+    });
+  }, 6 * 60 * 60 * 1000);
+  updateCheckTimer.unref();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -28,7 +28,22 @@ export type SupplierInput = {
 }
 
 declare global {
+  type LogProUpdateStatus =
+    | { state: 'checking' }
+    | { state: 'available'; version: string }
+    | { state: 'downloading'; percent: number }
+    | { state: 'downloaded'; version: string }
+    | { state: 'up-to-date' }
+    | { state: 'error'; message: string }
+
   interface Window {
+    logProDesktop?: {
+      onUpdateStatus: (callback: (status: LogProUpdateStatus) => void) => () => void
+      checkForUpdates: () => Promise<{ ok: boolean; error?: string }>
+      downloadUpdate: () => Promise<{ ok: boolean; error?: string }>
+      installUpdate: () => Promise<{ ok: boolean; error?: string }>
+    }
+
     logPro: {
       openWorkbook: () => Promise<WorkbookResult | null>
       createWorkbook: () => Promise<WorkbookResult | null>

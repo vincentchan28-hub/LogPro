@@ -16,7 +16,7 @@ import { ContactsTab } from './components/ContactsTab'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
 import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
-import { Building, Plus, Trees, Settings as SettingsIcon, Pencil } from 'lucide-react'
+import { Building, Download, Plus, RefreshCw, RotateCcw, Trees, Settings as SettingsIcon, Pencil, X } from 'lucide-react'
 import './App.css'
 
 
@@ -130,6 +130,8 @@ function App() {
   ])
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<LogProUpdateStatus | null>(null)
+  const [isUpdateNoticeDismissed, setIsUpdateNoticeDismissed] = useState(false)
 
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -172,6 +174,125 @@ function App() {
       .finally(() => setIsStarting(false))
   }, [])
 
+  useEffect(() => {
+    const desktop = window.logProDesktop
+    if (!desktop) return
+
+    return desktop.onUpdateStatus((status) => {
+      setUpdateStatus(status)
+      if (status.state !== 'checking') {
+        setIsUpdateNoticeDismissed(false)
+      }
+    })
+  }, [])
+
+  async function checkForUpdates() {
+    const desktop = window.logProDesktop
+    if (!desktop) return
+
+    setIsUpdateNoticeDismissed(false)
+    setUpdateStatus({ state: 'checking' })
+    try {
+      const result = await desktop.checkForUpdates()
+      if (!result.ok) {
+        setUpdateStatus({ state: 'error', message: result.error || 'Could not check for updates.' })
+      }
+    } catch (error: any) {
+      setUpdateStatus({ state: 'error', message: error?.message || 'Could not check for updates.' })
+    }
+  }
+
+  async function downloadUpdate() {
+    const desktop = window.logProDesktop
+    if (!desktop || updateStatus?.state !== 'available') return
+
+    setUpdateStatus({ state: 'downloading', percent: 0 })
+    try {
+      const result = await desktop.downloadUpdate()
+      if (!result.ok) {
+        setUpdateStatus({ state: 'error', message: result.error || 'Could not download the update.' })
+      }
+    } catch (error: any) {
+      setUpdateStatus({ state: 'error', message: error?.message || 'Could not download the update.' })
+    }
+  }
+
+  async function installUpdate() {
+    try {
+      const result = await window.logProDesktop?.installUpdate()
+      if (result && !result.ok) {
+        setUpdateStatus({ state: 'error', message: result.error || 'Could not install the update.' })
+      }
+    } catch (error: any) {
+      setUpdateStatus({ state: 'error', message: error?.message || 'Could not install the update.' })
+    }
+  }
+
+  function handleUpdateFooterClick() {
+    if (updateStatus && ['available', 'downloading', 'downloaded'].includes(updateStatus.state)) {
+      setIsUpdateNoticeDismissed(false)
+    } else {
+      void checkForUpdates()
+    }
+  }
+
+  function renderUpdateNotice() {
+    if (!window.logProDesktop || !updateStatus || isUpdateNoticeDismissed) return null
+
+    const updateVersion = 'version' in updateStatus ? updateStatus.version : ''
+    const title = {
+      checking: 'Checking for updates',
+      available: 'Update available',
+      downloading: 'Downloading update',
+      downloaded: 'Update ready',
+      'up-to-date': 'LogPro is up to date',
+      error: 'Update unavailable',
+    }[updateStatus.state]
+
+    return (
+      <aside className="update-notice" role="status" aria-live="polite">
+        <div className="update-notice-copy">
+          <strong>{title}</strong>
+          {updateStatus.state === 'available' && <p>Version {updateVersion} is available to download.</p>}
+          {updateStatus.state === 'checking' && <p>Checking the release channel…</p>}
+          {updateStatus.state === 'downloading' && <p>Downloading update… {Math.round(updateStatus.percent)}%</p>}
+          {updateStatus.state === 'downloaded' && <p>Version {updateVersion} is ready. Restart LogPro to install it.</p>}
+          {updateStatus.state === 'up-to-date' && <p>You have the latest version installed.</p>}
+          {updateStatus.state === 'error' && <p>{updateStatus.message}</p>}
+          {updateStatus.state === 'downloading' && (
+            <progress max={100} value={Math.min(100, Math.max(0, updateStatus.percent))} aria-label="Update download progress" />
+          )}
+        </div>
+        <div className="update-notice-actions">
+          {updateStatus.state === 'available' && (
+            <button type="button" onClick={() => void downloadUpdate()}>
+              <Download size={15} /> Download update
+            </button>
+          )}
+          {updateStatus.state === 'downloaded' && (
+            <button type="button" onClick={() => void installUpdate()}>
+              <RotateCcw size={15} /> Restart and install
+            </button>
+          )}
+          {updateStatus.state === 'error' && (
+            <button type="button" className="secondary-button" onClick={() => void checkForUpdates()}>
+              <RefreshCw size={15} /> Try again
+            </button>
+          )}
+          {updateStatus.state !== 'downloading' && (
+            <button
+              type="button"
+              className="update-later-button"
+              onClick={() => setIsUpdateNoticeDismissed(true)}
+              aria-label="Later"
+            >
+              <X size={15} /> Later
+            </button>
+          )}
+        </div>
+      </aside>
+    )
+  }
 
   function applyWorkbookResult(result: WorkbookResult | null) {
     if (!result) return
@@ -693,6 +814,7 @@ if (selectedWorkbook) {
           </nav>
         </div>
 
+        {renderUpdateNotice()}
         {renderPage()}
 
         {/* Unified Settings Modal */}
@@ -708,7 +830,21 @@ if (selectedWorkbook) {
 
         {/* Version footer */}
         <footer className="app-version-footer">
-          LogPro v{__APP_VERSION__}
+          <span>LogPro v{__APP_VERSION__}</span>
+          {window.logProDesktop && (
+            <button
+              type="button"
+              className="update-check-link"
+              onClick={handleUpdateFooterClick}
+              disabled={updateStatus?.state === 'checking'}
+            >
+              {updateStatus?.state === 'available'
+                ? 'Update available'
+                : updateStatus?.state === 'downloaded'
+                  ? 'Update ready'
+                  : 'Check for updates'}
+            </button>
+          )}
         </footer>
 
         {isSupplierFormOpen && (
@@ -1009,6 +1145,7 @@ if (selectedWorkbook) {
           Use the Download .xlsx button anytime to save files to your local drive.
         </p>
       </section>
+      {renderUpdateNotice()}
     </main>
   )
 }

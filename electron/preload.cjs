@@ -63,6 +63,25 @@ const api = {
   restoreBackup(workbookPath) {
     return ipcRenderer.invoke('backup:restore', workbookPath)
   },
+
+  // User-controlled application updates
+  onUpdateStatus(callback) {
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('updates:status', listener)
+    return () => ipcRenderer.removeListener('updates:status', listener)
+  },
+
+  checkForUpdates() {
+    return ipcRenderer.invoke('updates:check')
+  },
+
+  downloadUpdate() {
+    return ipcRenderer.invoke('updates:download')
+  },
+
+  installUpdate() {
+    return ipcRenderer.invoke('updates:install')
+  },
 }
 
 contextBridge.exposeInMainWorld('logProDesktop', api)
