@@ -12,6 +12,132 @@ const ZOOM_STEP = 0.5;
 const MIN_ZOOM_LEVEL = -3;
 const MAX_ZOOM_LEVEL = 5;
 
+const DEFAULT_WINDOW_BOUNDS = {
+  width: 1280,
+  height: 850,
+};
+
+const DEFAULT_ZOOM_LEVEL = 0;
+
+function getDisplayBounds() {
+  const displays = require('electron').screen.getAllDisplays();
+
+  return displays.reduce(
+    (combined, display) => {
+      const { x, y, width, height } = display.bounds;
+
+      return {
+        x: Math.min(combined.x, x),
+        y: Math.min(combined.y, y),
+        right: Math.max(combined.right, x + width),
+        bottom: Math.max(combined.bottom, y + height),
+      };
+    },
+    {
+      x: 0,
+      y: 0,
+      right: 1920,
+      bottom: 1080,
+    },
+  );
+}
+
+function loadWindowSettings() {
+  const settingsPath = path.join(app.getPath('userData'), 'window-settings.json');
+
+  try {
+    if (!fs.existsSync(settingsPath)) {
+      return {
+        bounds: { ...DEFAULT_WINDOW_BOUNDS },
+        zoomLevel: DEFAULT_ZOOM_LEVEL,
+      };
+    }
+
+    const saved = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const displayBounds = getDisplayBounds();
+
+    const savedBounds = saved.bounds || {};
+    const width = Number(savedBounds.width);
+    const height = Number(savedBounds.height);
+    const x = Number(savedBounds.x);
+    const y = Number(savedBounds.y);
+    const zoomLevel = Number(saved.zoomLevel);
+
+    const safeWidth =
+      Number.isFinite(width) && width >= 1000 ? width : DEFAULT_WINDOW_BOUNDS.width;
+
+    const safeHeight =
+      Number.isFinite(height) && height >= 700
+        ? height
+        : DEFAULT_WINDOW_BOUNDS.height;
+
+    const safeX =
+      Number.isFinite(x) &&
+      x < displayBounds.right &&
+      x + safeWidth > displayBounds.x
+        ? x
+        : undefined;
+
+    const safeY =
+      Number.isFinite(y) &&
+      y < displayBounds.bottom &&
+      y + safeHeight > displayBounds.y
+        ? y
+        : undefined;
+
+    const safeZoomLevel =
+      Number.isFinite(zoomLevel) &&
+      zoomLevel >= MIN_ZOOM_LEVEL &&
+      zoomLevel <= MAX_ZOOM_LEVEL
+        ? zoomLevel
+        : DEFAULT_ZOOM_LEVEL;
+
+    return {
+      bounds: {
+        width: safeWidth,
+        height: safeHeight,
+        ...(safeX === undefined ? {} : { x: safeX }),
+        ...(safeY === undefined ? {} : { y: safeY }),
+      },
+      zoomLevel: safeZoomLevel,
+    };
+  } catch (error) {
+    console.error('Could not load window settings:', error);
+
+    return {
+      bounds: { ...DEFAULT_WINDOW_BOUNDS },
+      zoomLevel: DEFAULT_ZOOM_LEVEL,
+    };
+  }
+}
+
+function saveWindowSettings() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const settingsPath = path.join(app.getPath('userData'), 'window-settings.json');
+  const bounds = mainWindow.getBounds();
+  const zoomLevel = mainWindow.webContents.getZoomLevel();
+
+  try {
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          bounds,
+          zoomLevel,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+  } catch (error) {
+    console.error('Could not save window settings:', error);
+  }
+}
+
 function zoomBy(webContents, step) {
   const next = webContents.getZoomLevel() + step;
   const clamped = Math.min(MAX_ZOOM_LEVEL, Math.max(MIN_ZOOM_LEVEL, next));
@@ -235,9 +361,10 @@ const workbookHeaders = {
 const supplierHeaders = workbookHeaders.Suppliers;
 
 function createWindow() {
+  const savedSettings = loadWindowSettings();
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 850,
+    ...savedSettings.bounds,
     minWidth: 1000,
     minHeight: 700,
     title: 'LogPro',
@@ -248,6 +375,8 @@ function createWindow() {
     },
   });
 
+  mainWindow.webContents.setZoomLevel(savedSettings.zoomLevel);
+
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
     if (!input.control && !input.meta) return;
@@ -255,18 +384,32 @@ function createWindow() {
     if (input.key === '=' || input.key === '+') {
       event.preventDefault();
       zoomBy(mainWindow.webContents, ZOOM_STEP);
+      saveWindowSettings();
     } else if (input.key === '-') {
       event.preventDefault();
       zoomBy(mainWindow.webContents, -ZOOM_STEP);
+      saveWindowSettings();
     } else if (input.key === '0') {
       event.preventDefault();
       zoomReset(mainWindow.webContents);
+      saveWindowSettings();
     }
   });
 
   mainWindow.webContents.on('zoom-changed', (_event, zoomDirection) => {
-    zoomBy(mainWindow.webContents, zoomDirection === 'in' ? ZOOM_STEP : -ZOOM_STEP);
+    zoomBy(
+      mainWindow.webContents,
+      zoomDirection === 'in' ? ZOOM_STEP : -ZOOM_STEP,
+    );
+    saveWindowSettings();
   });
+
+  const saveBounds = () => {
+    saveWindowSettings();
+  };
+
+  mainWindow.on('resize', saveBounds);
+  mainWindow.on('move', saveBounds);
 
   const developmentUrl = process.env.ELECTRON_START_URL;
 
@@ -275,6 +418,10 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
+
+  mainWindow.on('close', () => {
+    saveWindowSettings();
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -1158,10 +1305,6 @@ ipcMain.handle('backup:everything', async (_event, workbookPath) => {
 
 ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
   try {
-    if (!currentWorkbookPath || !fs.existsSync(currentWorkbookPath)) {
-      return { ok: false, error: 'Current workbook path is not available.' };
-    }
-
     const openRes = await dialog.showOpenDialog(mainWindow, {
       title: 'Select Backup ZIP to Restore',
       filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
@@ -1195,25 +1338,58 @@ ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
       };
     }
 
-    const targetFolder = path.dirname(currentWorkbookPath);
+    const archivedWorkbook = XLSX.read(await xlsxEntries[0].buffer(), { type: 'buffer' });
+    const missingSheets = workbookSheets.filter(
+      (sheetName) => !archivedWorkbook.SheetNames.includes(sheetName),
+    );
+    if (missingSheets.length > 0) {
+      return {
+        ok: false,
+        error: `The selected ZIP does not contain a LogPro workbook. Missing sheets: ${missingSheets.join(', ')}`,
+      };
+    }
 
-    // 2. Create safety backup of the existing workbook & Attachments folder
+    const currentWorkbookExists = Boolean(
+      currentWorkbookPath && fs.existsSync(currentWorkbookPath),
+    );
+    const currentFolder = currentWorkbookPath ? path.dirname(currentWorkbookPath) : '';
+    const targetFolder = currentFolder && fs.existsSync(currentFolder)
+      ? currentFolder
+      : path.dirname(selectedZipPath);
+    const currentName = currentWorkbookPath ? path.basename(currentWorkbookPath) : '';
+    const matchingEntry = xlsxEntries.find((entry) => path.basename(entry.path) === currentName);
+    const restoredWorkbookPath = path.join(
+      targetFolder,
+      path.basename((matchingEntry || xlsxEntries[0]).path),
+    );
+
+    // 2. Create a safety backup when a workbook already exists at the restore target.
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const dateStamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const safetyBackupPath = path.join(targetFolder, `Safety_Backup_Before_Restore_${dateStamp}.zip`);
+    const workbookToProtect = currentWorkbookExists
+      ? currentWorkbookPath
+      : fs.existsSync(restoredWorkbookPath)
+        ? restoredWorkbookPath
+        : '';
 
-    await retryWhileLocked('create safety backup', async () => {
-      await createZipArchive(currentWorkbookPath, safetyBackupPath, true);
-    });
+    if (workbookToProtect) {
+      await retryWhileLocked('create safety backup', async () => {
+        await createZipArchive(workbookToProtect, safetyBackupPath, true);
+      });
 
-    if (!fs.existsSync(safetyBackupPath)) {
-      return { ok: false, error: 'Failed to create safety backup prior to restore. Aborting restore.' };
+      if (!fs.existsSync(safetyBackupPath)) {
+        return { ok: false, error: 'Failed to create safety backup prior to restore. Aborting restore.' };
+      }
     }
 
-    // 3. Clean existing local Attachments directory for full snapshot replacement
+    // 3. Replace Attachments only when the archive contains that folder.
     const localAttachments = path.join(targetFolder, 'Attachments');
-    if (fs.existsSync(localAttachments)) {
+    const archiveHasAttachments = files.some((file) =>
+      file.path.toLowerCase().startsWith('attachments/'),
+    );
+    if (archiveHasAttachments && fs.existsSync(localAttachments)) {
       try {
         fs.rmSync(localAttachments, { recursive: true, force: true });
       } catch (rmErr) {
@@ -1242,18 +1418,10 @@ ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
         });
     });
 
-    // 4. Determine restored workbook path
-    let restoredWorkbookPath = currentWorkbookPath;
-    const currentName = path.basename(currentWorkbookPath);
-    const matchingEntry = xlsxEntries.find((e) => path.basename(e.path) === currentName);
-    if (!matchingEntry) {
-      restoredWorkbookPath = path.join(targetFolder, path.basename(xlsxEntries[0].path));
-    }
-
     return {
       ok: true,
       restoredWorkbookPath,
-      safetyBackupPath,
+      safetyBackupPath: workbookToProtect ? safetyBackupPath : '',
       restoredWorkbookName: path.basename(restoredWorkbookPath),
     };
   } catch (error) {

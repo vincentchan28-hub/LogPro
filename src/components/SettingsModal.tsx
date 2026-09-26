@@ -412,9 +412,9 @@ export function SettingsModal({
       if (!res.ok) {
         setWorkbookError(res.error || 'Failed to restore backup.')
       } else {
-        setWorkbookMessage(
-          `Backup restored successfully! A safety backup was saved at: ${res.safetyBackupPath}. Reloading workbook...`,
-        )
+        setWorkbookMessage(res.safetyBackupPath
+          ? `Backup restored successfully. A safety backup was saved at: ${res.safetyBackupPath}. Reloading workbook...`
+          : 'Backup restored successfully. Reloading workbook...')
         if (res.restoredWorkbookPath) {
           try {
             const loadRes = await window.logPro.loadWorkbook(res.restoredWorkbookPath)
@@ -2180,19 +2180,13 @@ export function SettingsModal({
 
                     <button
                       type="button"
-                      className="primary-button"
+                      className="workbook-backup-action workbook-backup-action--backup"
                       onClick={handleBackupEverything}
                       disabled={!workbookPath || isBackingUp || isChangingWorkbook}
-                      style={{
-                        marginTop: '12px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        backgroundColor: '#059669',
-                      }}
+                      style={{ marginTop: '12px' }}
                     >
                       <Archive size={15} />
-                      {isBackingUp ? 'Creating Backup…' : 'Backup Everything (.zip)'}
+                      {isBackingUp ? 'Backing up…' : 'Backup (.zip)'}
                     </button>
                   </div>
                 </div>
@@ -2213,20 +2207,13 @@ export function SettingsModal({
 
                     <button
                       type="button"
-                      className="secondary-button"
+                      className="workbook-backup-action workbook-backup-action--restore"
                       onClick={handlePromptRestore}
                       disabled={!workbookPath || isRestoring || isChangingWorkbook}
-                      style={{
-                        marginTop: '12px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        borderColor: '#d97706',
-                        color: '#b45309',
-                      }}
+                      style={{ marginTop: '12px' }}
                     >
                       <RotateCcw size={15} />
-                      {isRestoring ? 'Restoring…' : 'Restore Complete Backup'}
+                      {isRestoring ? 'Restoring…' : 'Restore'}
                     </button>
                   </div>
                 </div>

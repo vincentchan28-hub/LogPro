@@ -528,14 +528,18 @@ function saveWorkbookToStorage(path: string, workbook: XLSX.WorkBook): void {
   workbookCache.set(path, workbook)
   try {
     const base64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' })
-    window.localStorage.setItem(`${STORAGE_PREFIX}${path}`, base64)
-
-    // If running in desktop Electron environment, persist directly to file on disk:
     const desktop = (window as any).logProDesktop
     if (desktop && typeof desktop.writeWorkbookFile === 'function') {
+      try {
+        window.localStorage.removeItem(`${STORAGE_PREFIX}${path}`)
+      } catch {
+        // Ignore storage issues
+      }
       desktop.writeWorkbookFile(path, base64).catch((err: any) => {
         console.warn('Desktop file write error:', err)
       })
+    } else {
+      window.localStorage.setItem(`${STORAGE_PREFIX}${path}`, base64)
     }
   } catch (error) {
     console.warn('Could not persist workbook to localStorage:', error)
@@ -703,25 +707,59 @@ export const webLogPro = {
   },
 
   async loadWorkbook(workbookPath: string): Promise<WorkbookResult> {
-    let workbook = getWorkbook(workbookPath)
+    const desktop = (window as any).logProDesktop
+    let workbook: XLSX.WorkBook | null = null
 
-    if (!workbook) {
-      const desktop = (window as any).logProDesktop
-      if (desktop && typeof desktop.readWorkbookFile === 'function') {
-        try {
-          const res = await desktop.readWorkbookFile(workbookPath)
-          if (res && res.base64) {
-            workbook = XLSX.read(res.base64, { type: 'base64' })
-            populateDefaultsIfEmpty(workbook)
-            workbookCache.set(workbookPath, workbook)
+    if (desktop && typeof desktop.readWorkbookFile === 'function') {
+      try {
+        const res = await desktop.readWorkbookFile(workbookPath)
+        if (!res?.base64) {
+          workbookCache.delete(workbookPath)
+          try {
+            window.localStorage.removeItem(`${STORAGE_PREFIX}${workbookPath}`)
+          } catch {
+            // Ignore storage issues
           }
-        } catch (desktopErr) {
-          console.warn('Could not read desktop workbook file:', desktopErr)
+          return {
+            path: '',
+            error: res?.error || 'LogPro could not find the workbook.',
+            suppliers: [],
+          }
+        }
+
+        workbook = XLSX.read(res.base64, { type: 'base64' })
+        const missingSheets = WORKBOOK_SHEETS.filter(
+          (sheetName) => !workbook!.SheetNames.includes(sheetName),
+        )
+        if (missingSheets.length > 0) {
+          workbookCache.delete(workbookPath)
+          return {
+            path: '',
+            error: `This is not a LogPro workbook. Missing sheets: ${missingSheets.join(', ')}`,
+            suppliers: [],
+          }
+        }
+        populateDefaultsIfEmpty(workbook)
+        workbookCache.set(workbookPath, workbook)
+        try {
+          window.localStorage.removeItem(`${STORAGE_PREFIX}${workbookPath}`)
+        } catch {
+          // Ignore storage issues
+        }
+      } catch (desktopErr) {
+        workbookCache.delete(workbookPath)
+        console.warn('Could not read desktop workbook file:', desktopErr)
+        return {
+          path: '',
+          error: 'LogPro could not read the workbook from disk.',
+          suppliers: [],
         }
       }
+    } else {
+      workbook = getWorkbook(workbookPath)
     }
 
-    if (!workbook) {
+    if (!workbook && !(desktop && typeof desktop.readWorkbookFile === 'function')) {
       workbook = await fetchBundledWorkbook(workbookPath)
       if (workbook) {
         saveWorkbookToStorage(workbookPath, workbook)

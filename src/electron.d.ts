@@ -10,6 +10,7 @@ import type {
   WorkbookResult,
   TimelineEvent,
 } from './types'
+
 import type {
   CostingInput,
   CostingListResult,
@@ -130,14 +131,15 @@ declare global {
         error: string
       }>
 
-      getPriceHistory: (
-        workbookPath: string,
-        p      deleteProcurement: (
+      deleteProcurement: (
         workbookPath: string,
         procurementRef: string,
       ) => Promise<{ error: string }>
 
-      getProcurementTimeline: (workbookPath: string, procurementRef: string) => TimelineEvent[]
+      getProcurementTimeline: (
+        workbookPath: string,
+        procurementRef: string,
+      ) => TimelineEvent[]
 
       addProcurementNote: (
         workbookPath: string,
@@ -148,7 +150,6 @@ declare global {
       getPriceHistory: (
         workbookPath: string,
         procurementRef?: string,
-      ) => PriceHistory[]rocurementRef?: string,
       ) => PriceHistory[]
 
       recordPriceHistory: (
@@ -161,21 +162,38 @@ declare global {
       }>
 
       getSpecies: (workbookPath: string) => SpeciesDefinition[]
+
       getGrades: (workbookPath: string) => GradeDefinition[]
+
       addSpecies: (
         workbookPath: string,
         speciesName: string,
         notes?: string,
-      ) => Promise<{ species: SpeciesDefinition[]; error: string }>
+      ) => Promise<{
+        species: SpeciesDefinition[]
+        error: string
+      }>
+
       updateSpecies: (
         workbookPath: string,
         speciesId: string | number,
-        data: { speciesName: string; notes?: string },
-      ) => Promise<{ species: SpeciesDefinition[]; error: string }>
+        data: {
+          speciesName: string
+          notes?: string
+        },
+      ) => Promise<{
+        species: SpeciesDefinition[]
+        error: string
+      }>
+
       deleteSpecies: (
         workbookPath: string,
         speciesId: string | number,
-      ) => Promise<{ species: SpeciesDefinition[]; error: string }>
+      ) => Promise<{
+        species: SpeciesDefinition[]
+        error: string
+      }>
+
       addGrade: (
         workbookPath: string,
         speciesName: string,
@@ -184,7 +202,11 @@ declare global {
         notes?: string,
         supplierId?: string | number,
         supplierName?: string,
-      ) => Promise<{ grades: GradeDefinition[]; error: string }>
+      ) => Promise<{
+        grades: GradeDefinition[]
+        error: string
+      }>
+
       updateGrade: (
         workbookPath: string,
         gradeId: string | number,
@@ -196,25 +218,58 @@ declare global {
           supplierName?: string
           notes?: string
         },
-      ) => Promise<{ grades: GradeDefinition[]; error: string }>
+      ) => Promise<{
+        grades: GradeDefinition[]
+        error: string
+      }>
+
       deleteGrade: (
         workbookPath: string,
         gradeId: string | number,
-      ) => Promise<{ grades: GradeDefinition[]; error: string }>
+      ) => Promise<{
+        grades: GradeDefinition[]
+        error: string
+      }>
 
-      getCostings: (workbookPath: string) => LegacyCostingRecord[]
+      getCostings: (
+        workbookPath: string,
+      ) => LegacyCostingRecord[]
+
       saveCosting: {
-        (workbookPath: string, costing: Partial<LegacyCostingRecord>): Promise<{ costings: LegacyCostingRecord[]; error: string }>
-        (workbookPath: string, costing: CostingInput): Promise<CostingListResult>
-        (workbookPath: string, costing: any): Promise<any>
+        (
+          workbookPath: string,
+          costing: Partial<LegacyCostingRecord>,
+        ): Promise<{
+          costings: LegacyCostingRecord[]
+          error: string
+        }>
+
+        (
+          workbookPath: string,
+          costing: CostingInput,
+        ): Promise<CostingListResult>
+
+        (
+          workbookPath: string,
+          costing: any,
+        ): Promise<any>
       }
+
       deleteCosting: (
         workbookPath: string,
         costingId: string | number,
-      ) => Promise<{ costings: LegacyCostingRecord[]; error: string }>
+      ) => Promise<{
+        costings: LegacyCostingRecord[]
+        error: string
+      }>
 
       getRates: () => Promise<RatesResult>
-      listCostings: (workbookPath: string) => Promise<CostingListResult>
+
+      listCostings: (
+        workbookPath: string,
+      ) => Promise<CostingListResult>
     }
   }
 }
+
+export {}

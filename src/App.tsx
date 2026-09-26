@@ -111,6 +111,7 @@ function rememberWorkbook(workbookPath: string) {
 
 function App() {
   const [isStarting, setIsStarting] = useState(true)
+  const [isRestoringFromSetup, setIsRestoringFromSetup] = useState(false)
   const [selectedWorkbook, setSelectedWorkbook] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [currentPage, setCurrentPage] = useState<Page>('procurements')
@@ -169,16 +170,6 @@ function App() {
         )
       })
       .finally(() => setIsStarting(false))
-
-    // Cleanup: clear cached workbook path when app closes
-    return () => {
-      try {
-        window.localStorage.removeItem(lastWorkbookKey)
-        console.log('[App] Cleared workbook path cache on close')
-      } catch (error) {
-        console.warn('[App] Could not clear cache on close:', error)
-      }
-    }
   }, [])
 
 
@@ -221,6 +212,36 @@ function App() {
     setErrorMessage('Could not create workbook.')
   }
 }
+
+    async function handleRestoreFromSetup() {
+      const desktop = (window as any).logProDesktop
+      if (!desktop || typeof desktop.restoreBackup !== 'function') {
+        setErrorMessage('Restore from ZIP backup requires the Electron desktop application.')
+        return
+      }
+
+      setIsRestoringFromSetup(true)
+      setErrorMessage('')
+      try {
+        const restoreResult = await desktop.restoreBackup('')
+        if (restoreResult?.canceled) return
+        if (!restoreResult?.ok || !restoreResult.restoredWorkbookPath) {
+          setErrorMessage(restoreResult?.error || 'Could not restore the selected backup.')
+          return
+        }
+
+        const workbookResult = await window.logPro.loadWorkbook(restoreResult.restoredWorkbookPath)
+        if (workbookResult.error || !workbookResult.path) {
+          setErrorMessage(workbookResult.error || 'The restored workbook could not be opened.')
+          return
+        }
+        applyWorkbookResult(workbookResult)
+      } catch (error: any) {
+        setErrorMessage(error?.message || 'Could not restore the selected backup.')
+      } finally {
+        setIsRestoringFromSetup(false)
+      }
+    }
 
   function refreshWorkbookData() {
     if (!selectedWorkbook) return
@@ -969,6 +990,15 @@ if (selectedWorkbook) {
             onClick={handleOpenWorkbook}
           >
             Open Existing Workbook
+          </button>
+
+          <button
+            type="button"
+            className="restore-setup-button"
+            onClick={handleRestoreFromSetup}
+            disabled={isRestoringFromSetup}
+          >
+            {isRestoringFromSetup ? 'Restoring…' : 'Restore'}
           </button>
         </div>
 

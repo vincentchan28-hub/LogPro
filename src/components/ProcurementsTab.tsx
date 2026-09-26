@@ -731,8 +731,8 @@ export function ProcurementsTab({
   }
 
   // Save new procurement (also used by "Save as New (Duplicate)")
-  async function handleSaveNew(e: FormEvent) {
-    e.preventDefault()
+async function handleSaveNew(e?: FormEvent) {
+  e?.preventDefault()
     setErrorMsg('')
     setSuccessMsg('')
 

@@ -779,6 +779,56 @@ button {
   line-height: 1.45;
 }
 
+.workbook-backup-action {
+  width: 180px;
+  height: 38px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.workbook-backup-action--backup {
+  border-color: #86efac;
+  background: rgba(22, 163, 74, 0.12);
+  color: #166534;
+}
+
+.workbook-backup-action--backup:hover {
+  background: rgba(22, 163, 74, 0.2);
+}
+
+.workbook-backup-action--restore {
+  border-color: #fdba74;
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+.workbook-backup-action--restore:hover {
+  background: rgba(249, 115, 22, 0.2);
+}
+
+.workbook-backup-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.setup-card .restore-setup-button {
+  border-color: #fdba74;
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+.setup-card .restore-setup-button:hover {
+  background: rgba(249, 115, 22, 0.2);
+}
+
 /* Modal Footer */
 .settings-modal-footer {
   display: flex;
@@ -1201,15 +1251,22 @@ button {
   z-index: 100;
 }
 
-@keyframes flash-warning {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
+.flash-warning {
+  opacity: 0.6;
 }
 
-.flash-warning {
-  animation: flash-warning 0.8s ease-in-out infinite;
-}: 0.75rem;
+/* App version footer */
+.app-version-footer {
+  position: fixed;
+  bottom: 8px;
+  right: 12px;
+  font-size: 0.75rem;
   color: var(--muted, #64748b);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  z-index: 100;
+}
   font-weight: 500;
   letter-spacing: 0.02em;
   pointer-events: none;
