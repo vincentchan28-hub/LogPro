@@ -65,7 +65,7 @@
       "provider": "github",
       "owner": "vincentchan28-hub",
       "repo": "logpro",
-      "private": true,
+      "private": false,
       "releaseType": "release"
     }
   }
