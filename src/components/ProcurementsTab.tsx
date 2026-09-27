@@ -33,6 +33,7 @@ import {
 } from '../types'
 import { SettingsModal } from './SettingsModal'
 import { AddContactModal } from './AddContactModal'
+import { NoteEditor } from './NoteEditor'
 import { PriceRevisionModal, type DetectedPriceChange } from './PriceRevisionModal'
 import { ProcurementDetailView } from './ProcurementDetailView'
 import {
@@ -88,6 +89,47 @@ function isGradeCancelled(price: string | number | undefined): boolean {
     return lower === 'cancelled' || lower === 'cancel' || lower === 'c'
   }
   return false
+}
+
+function isOfferedTBA(price: string | number | undefined): boolean {
+  if (price === undefined || price === null || price === '') return false
+  if (typeof price === 'string') {
+    const lower = price.trim().toLowerCase()
+    return lower === 'tba' || lower === 't'
+  }
+  return false
+}
+
+// Remembers how wide each column of the Grades & Pricing table is,
+// for the Add / Edit screen.
+const PROC_EDIT_GRADE_WIDTHS_KEY = 'logpro.procEditGradeColumnWidths'
+const DEFAULT_PROC_EDIT_GRADE_WIDTHS = {
+  species: 150,
+  product: 120,
+  grade: 150,
+  offered: 110,
+  agreed: 120,
+}
+type ProcEditGradeWidths = typeof DEFAULT_PROC_EDIT_GRADE_WIDTHS
+
+function readProcEditGradeWidths(): ProcEditGradeWidths {
+  try {
+    const text = window.localStorage.getItem(PROC_EDIT_GRADE_WIDTHS_KEY)
+    if (text) {
+      return { ...DEFAULT_PROC_EDIT_GRADE_WIDTHS, ...JSON.parse(text) }
+    }
+  } catch {
+    // Use the defaults if the browser blocks reading.
+  }
+  return { ...DEFAULT_PROC_EDIT_GRADE_WIDTHS }
+}
+
+function saveProcEditGradeWidths(widths: ProcEditGradeWidths) {
+  try {
+    window.localStorage.setItem(PROC_EDIT_GRADE_WIDTHS_KEY, JSON.stringify(widths))
+  } catch {
+    // Ignore storage issues.
+  }
 }
 
 function isProcurementAgreed(
@@ -231,6 +273,34 @@ export function ProcurementsTab({
   const [timelineNoteText, setTimelineNoteText] = useState('')
   const [isSavingNote, setIsSavingNote] = useState(false)
   const [noteAddedMsg, setNoteAddedMsg] = useState('')
+
+  // Column widths for the Grades & Pricing table (Add / Edit screen)
+  const [gradeColumnWidths, setGradeColumnWidths] = useState<ProcEditGradeWidths>(() =>
+    readProcEditGradeWidths(),
+  )
+
+  function startGradeColumnResize(column: keyof ProcEditGradeWidths, event: React.MouseEvent) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = gradeColumnWidths[column]
+
+    function onMove(moveEvent: MouseEvent) {
+      const next = Math.max(50, startWidth + (moveEvent.clientX - startX))
+      setGradeColumnWidths((current) => ({ ...current, [column]: next }))
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setGradeColumnWidths((current) => {
+        saveProcEditGradeWidths(current)
+        return current
+      })
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   async function handleAddTimelineNote() {
     if (!selectedProcRef || !timelineNoteText.trim()) return
@@ -827,7 +897,9 @@ export function ProcurementsTab({
     const validatedGrades: Partial<ProcurementGrade>[] = []
     for (const [idx, row] of gradeRows.entries()) {
       const rowNum = idx + 1
-      const offered = Number(row.OfferedPricePerTonne) || 0
+      const offered = isOfferedTBA(row.OfferedPricePerTonne)
+        ? 'TBA'
+        : (Number(row.OfferedPricePerTonne) || 0)
       const isCancelled = isGradeCancelled(row.AgreedPricePerTonne)
       const agreedPrice = isCancelled ? 'Cancelled' : (Number(row.AgreedPricePerTonne) || 0)
       const agreedTonnes = Number(row.AgreedTonnes) || 0
@@ -2836,15 +2908,38 @@ if (window.logPro?.addProcurementNote) {
 
                 {/* Table */}
                 <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem', tableLayout: 'fixed' }}>
+                    <colgroup>
+                      <col style={{ width: `${gradeColumnWidths.species}px` }} />
+                      <col style={{ width: `${gradeColumnWidths.product}px` }} />
+                      <col style={{ width: `${gradeColumnWidths.grade}px` }} />
+                      <col style={{ width: `${gradeColumnWidths.offered}px` }} />
+                      <col style={{ width: `${gradeColumnWidths.agreed}px` }} />
+                      <col style={{ width: '45px' }} />
+                    </colgroup>
                     <thead>
                       <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
-                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Species</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '110px' }}>Product</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Grade</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '95px' }}>Offered $/t</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed $/t *</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'center', width: '45px' }}></th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', position: 'relative' }}>
+                          Species
+                          <span onMouseDown={(e) => startGradeColumnResize('species', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                        </th>
+                        <th style={{ padding: '8px 10px', textAlign: 'left', position: 'relative' }}>
+                          Product
+                          <span onMouseDown={(e) => startGradeColumnResize('product', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                        </th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', position: 'relative' }}>
+                          Grade
+                          <span onMouseDown={(e) => startGradeColumnResize('grade', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                        </th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', position: 'relative' }}>
+                          Offered $/t
+                          <span onMouseDown={(e) => startGradeColumnResize('offered', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                        </th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center', position: 'relative' }}>
+                          Agreed $/t *
+                          <span onMouseDown={(e) => startGradeColumnResize('agreed', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                        </th>
+                        <th style={{ padding: '8px 10px', textAlign: 'center' }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2913,6 +3008,7 @@ if (window.logPro?.addProcurementNote) {
                                   border: '1px solid #cbd5e1',
                                   fontSize: '0.85rem',
                                   fontWeight: 600,
+                                  textAlign: 'center',
                                 }}
                               >
                                 <option value="">-- Select Grade --</option>
@@ -2928,25 +3024,68 @@ if (window.logPro?.addProcurementNote) {
                             </td>
 
                             <td style={{ padding: '6px 8px' }}>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                value={row.OfferedPricePerTonne}
-                                onChange={(e) =>
-                                  handleGradeRowChange(idx, 'OfferedPricePerTonne', e.target.value)
-                                }
-                                style={{
-                                  width: '100%',
-                                  textAlign: 'right',
-                                  padding: '6px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #cbd5e1',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 600,
-                                  color: '#dc2626',
-                                }}
-                              />
+                              {(() => {
+                                const isTBA = isOfferedTBA(row.OfferedPricePerTonne)
+                                return (
+                                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                      type="text"
+                                      placeholder="0.00 or 't'"
+                                      value={row.OfferedPricePerTonne}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 't' || e.key === 'T') {
+                                          e.preventDefault()
+                                          handleGradeRowChange(idx, 'OfferedPricePerTonne', 'TBA')
+                                        } else if (isTBA && (e.key === 'Backspace' || e.key === 'Delete')) {
+                                          e.preventDefault()
+                                          handleGradeRowChange(idx, 'OfferedPricePerTonne', '')
+                                        }
+                                      }}
+                                      onChange={(e) => {
+                                        const rawInput = e.target.value
+                                        const lower = rawInput.toLowerCase().trim()
+                                        if (lower === 't' || lower === 'tba') {
+                                          handleGradeRowChange(idx, 'OfferedPricePerTonne', 'TBA')
+                                        } else if (rawInput === '' || /^[0-9]*\.?[0-9]*$/.test(rawInput)) {
+                                          handleGradeRowChange(idx, 'OfferedPricePerTonne', rawInput)
+                                        }
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        textAlign: 'center',
+                                        padding: isTBA ? '6px 20px 6px 8px' : '6px 8px',
+                                        borderRadius: '4px',
+                                        border: isTBA ? '1.5px solid #fca5a5' : '1px solid #cbd5e1',
+                                        background: isTBA ? '#fef2f2' : '#ffffff',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        color: '#dc2626',
+                                      }}
+                                    />
+                                    {isTBA && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGradeRowChange(idx, 'OfferedPricePerTonne', '')}
+                                        title="Clear TBA"
+                                        style={{
+                                          position: 'absolute',
+                                          right: '4px',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#dc2626',
+                                          fontSize: '13px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          padding: '0 4px',
+                                          lineHeight: 1,
+                                        }}
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </td>
 
                             <td style={{ padding: '6px 8px' }}>
@@ -3003,7 +3142,7 @@ if (window.logPro?.addProcurementNote) {
                                       }}
                                       style={{
                                         width: '100%',
-                                        textAlign: isCancelled ? 'center' : 'right',
+                                        textAlign: 'center',
                                         padding: isCancelled ? '6px 20px 6px 8px' : '6px 8px',
                                         borderRadius: '4px',
                                         border: isCancelled ? '1.5px solid #fca5a5' : `1px solid ${borderColor}`,
@@ -3214,19 +3353,11 @@ if (window.logPro?.addProcurementNote) {
                   <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
                     General Notes
                   </label>
-                  <textarea
-                    rows={3}
-                    placeholder="Any general comments, delivery notes, or road permits"
+                  <NoteEditor
                     value={generalNotes}
-                    onChange={(e) => setGeneralNotes(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid var(--border)',
-                      background: '#fff',
-                      fontSize: '0.85rem',
-                    }}
+                    onChange={setGeneralNotes}
+                    placeholder="Any general comments, delivery notes, or road permits. You can paste in a photo too."
+                    minHeight={70}
                   />
                 </div>
 

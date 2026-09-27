@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { TimelineEvent } from '../types'
+import { ImageLightboxModal } from './ImageLightboxModal'
 
 type ProcurementTimelineModalProps = {
   isOpen: boolean
@@ -34,7 +36,16 @@ export function ProcurementTimelineModal({
   procurementRef,
   events,
 }: ProcurementTimelineModalProps) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
   if (!isOpen) return null
+
+  function handleBubbleClick(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setLightboxSrc((target as HTMLImageElement).src)
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -87,6 +98,8 @@ export function ProcurementTimelineModal({
                   {formatEventDate(event.date)} — {event.title}
                 </div>
                 <div
+                  className="note-html"
+                  onClick={handleBubbleClick}
                   style={{
                     background: BUBBLE_FILL[event.type],
                     border: `1px solid ${BUBBLE_BORDER[event.type]}`,
@@ -110,6 +123,13 @@ export function ProcurementTimelineModal({
           </div>
         )}
       </section>
+
+      <ImageLightboxModal
+        isOpen={Boolean(lightboxSrc)}
+        imageSrc={lightboxSrc}
+        title="Note picture"
+        onClose={() => setLightboxSrc(null)}
+      />
     </div>
   )
 }

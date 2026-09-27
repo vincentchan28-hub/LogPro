@@ -204,6 +204,15 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// Turns whatever the user typed in the "Offered $/t" box into either a
+// number, or the text "TBA" (To Be Advised) if they typed t / tba.
+function normaliseOfferedPrice(value: unknown): number | string {
+  if (typeof value === 'string' && ['tba', 't'].includes(value.trim().toLowerCase())) {
+    return 'TBA'
+  }
+  return Number(value) || 0
+}
+
 // Shortens a name so timeline columns line up: two words become their
 // first two letters each (Radiata Pine -> Ra Pi); one word becomes its
 // first four letters (Green -> Gree).
@@ -424,7 +433,7 @@ export function readProcurementGrades(
         Species: String(row.Species || ''),
         ProductType: String(row.ProductType || 'Green'),
         GradeName: String(row.GradeName || ''),
-        OfferedPricePerTonne: Number(row.OfferedPricePerTonne) || 0,
+        OfferedPricePerTonne: normaliseOfferedPrice(row.OfferedPricePerTonne),
         AgreedPricePerTonne:
           typeof row.AgreedPricePerTonne === 'string' &&
           row.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
@@ -1284,7 +1293,12 @@ export const webLogPro = {
 
       if (newProcurement.Notes) {
         newProcurement.ActivityLog = JSON.stringify([
-          { date: now, text: newProcurement.Notes, kind: 'general' },
+          {
+            date: now,
+            text: newProcurement.Notes,
+            kind: 'general',
+            html: newProcurement.Notes.includes('<img'),
+          },
         ])
       }
 
@@ -1307,7 +1321,7 @@ export const webLogPro = {
           Species: String(g.Species || newProcurement.Species || ''),
           ProductType: g.ProductType || 'Green',
           GradeName: String(g.GradeName || ''),
-          OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
+          OfferedPricePerTonne: normaliseOfferedPrice(g.OfferedPricePerTonne),
           AgreedPricePerTonne:
             typeof g.AgreedPricePerTonne === 'string' &&
             g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
@@ -1412,7 +1426,7 @@ export const webLogPro = {
       const previousGeneralNotes = String(existing.Notes || '').trim()
       const nextGeneralNotes = String(updatedProcurement.Notes || '').trim()
       if (nextGeneralNotes && nextGeneralNotes !== previousGeneralNotes) {
-        let activityLog: { date: string; text: string; kind?: string }[] = []
+        let activityLog: { date: string; text: string; kind?: string; html?: boolean }[] = []
         try {
           activityLog = updatedProcurement.ActivityLog
             ? JSON.parse(updatedProcurement.ActivityLog as string)
@@ -1420,7 +1434,12 @@ export const webLogPro = {
         } catch {
           activityLog = []
         }
-        activityLog.push({ date: now, text: nextGeneralNotes, kind: 'general' })
+        activityLog.push({
+          date: now,
+          text: nextGeneralNotes,
+          kind: 'general',
+          html: nextGeneralNotes.includes('<img'),
+        })
         updatedProcurement.ActivityLog = JSON.stringify(activityLog)
       }
 
@@ -1459,7 +1478,7 @@ export const webLogPro = {
           Species: String(g.Species || updatedProcurement.Species || ''),
           ProductType: g.ProductType || 'Green',
           GradeName: String(g.GradeName || ''),
-          OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
+          OfferedPricePerTonne: normaliseOfferedPrice(g.OfferedPricePerTonne),
           AgreedPricePerTonne:
             typeof g.AgreedPricePerTonne === 'string' &&
             g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
@@ -1633,7 +1652,7 @@ export const webLogPro = {
     })
 
     try {
-      const log: { date: string; text: string; kind?: string }[] = procurement.ActivityLog
+      const log: { date: string; text: string; kind?: string; html?: boolean }[] = procurement.ActivityLog
         ? JSON.parse(procurement.ActivityLog)
         : []
       log.forEach((entry, idx) => {
@@ -1643,6 +1662,7 @@ export const webLogPro = {
           type: 'note',
           title: entry.kind === 'general' ? 'General notes' : 'Note added',
           body: entry.text,
+          html: Boolean(entry.html) || /<img\b/i.test(entry.text || ''),
         })
       })
     } catch {
@@ -1668,13 +1688,13 @@ export const webLogPro = {
       const idx = procurements.findIndex((p) => p.ProcurementRef.trim() === procurementRef.trim())
       if (idx === -1) return { error: `Procurement ${procurementRef} was not found.` }
 
-      let log: { date: string; text: string }[] = []
+      let log: { date: string; text: string; html?: boolean }[] = []
       try {
         log = procurements[idx].ActivityLog ? JSON.parse(procurements[idx].ActivityLog as string) : []
       } catch {
         log = []
       }
-      log.push({ date: formatTimestamp(), text: clean })
+      log.push({ date: formatTimestamp(), text: clean, html: clean.includes('<img') })
 
       procurements[idx] = { ...procurements[idx], ActivityLog: JSON.stringify(log) }
       setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)

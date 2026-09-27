@@ -1354,6 +1354,22 @@ button {
   opacity: 0.6;
 }
 
+/* Notes that may contain a pasted picture: General Notes, Additional Notes, Timeline */
+.note-html img {
+  max-width: 260px;
+  max-height: 220px;
+  display: block;
+  margin: 6px 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: zoom-in;
+}
+
+.note-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+}
+
 /* App version footer */
 .app-version-footer {
   position: fixed;

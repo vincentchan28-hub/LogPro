@@ -9,6 +9,8 @@ import type {
 } from '../types'
 import { ProductTypeBadge } from './ProductTypeBadge'
 import { ProcurementTimelineModal } from './ProcurementTimelineModal'
+import { NoteEditor } from './NoteEditor'
+import { ImageLightboxModal } from './ImageLightboxModal'
 
 type ProcurementDetailViewProps = {
   procurement: Procurement
@@ -101,11 +103,6 @@ const headCell: CSSProperties = {
   borderBottom: '1px solid var(--border)',
 }
 
-const headCellRight: CSSProperties = {
-  ...headCell,
-  textAlign: 'right',
-}
-
 const bodyCell: CSSProperties = {
   padding: '8px 10px',
   fontSize: '0.84rem',
@@ -115,6 +112,48 @@ const bodyCell: CSSProperties = {
 const bodyCellRight: CSSProperties = {
   ...bodyCell,
   textAlign: 'right',
+}
+
+const headCellCenter: CSSProperties = {
+  ...headCell,
+  textAlign: 'center',
+}
+
+const bodyCellCenter: CSSProperties = {
+  ...bodyCell,
+  textAlign: 'center',
+}
+
+// Remembers how wide each column of the Grades & Pricing table is,
+// for the View screen.
+const PROC_VIEW_GRADE_WIDTHS_KEY = 'logpro.procViewGradeColumnWidths'
+const DEFAULT_PROC_VIEW_GRADE_WIDTHS = {
+  species: 140,
+  product: 110,
+  grade: 160,
+  offered: 110,
+  agreed: 110,
+}
+type ProcViewGradeWidths = typeof DEFAULT_PROC_VIEW_GRADE_WIDTHS
+
+function readProcViewGradeWidths(): ProcViewGradeWidths {
+  try {
+    const text = window.localStorage.getItem(PROC_VIEW_GRADE_WIDTHS_KEY)
+    if (text) {
+      return { ...DEFAULT_PROC_VIEW_GRADE_WIDTHS, ...JSON.parse(text) }
+    }
+  } catch {
+    // Use the defaults if the browser blocks reading.
+  }
+  return { ...DEFAULT_PROC_VIEW_GRADE_WIDTHS }
+}
+
+function saveProcViewGradeWidths(widths: ProcViewGradeWidths) {
+  try {
+    window.localStorage.setItem(PROC_VIEW_GRADE_WIDTHS_KEY, JSON.stringify(widths))
+  } catch {
+    // Ignore storage issues.
+  }
 }
 
 export function ProcurementDetailView({
@@ -135,6 +174,40 @@ export function ProcurementDetailView({
   const hasSpec = Boolean(procurement.LogSpecFileID)
   const [isTimelineOpen, setIsTimelineOpen] = useState(false)
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const [gradeColumnWidths, setGradeColumnWidths] = useState<ProcViewGradeWidths>(() =>
+    readProcViewGradeWidths(),
+  )
+
+  function handleNotesClick(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement
+    if (target.tagName === 'IMG') {
+      setLightboxSrc((target as HTMLImageElement).src)
+    }
+  }
+
+  function startGradeColumnResize(column: keyof ProcViewGradeWidths, event: React.MouseEvent) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = gradeColumnWidths[column]
+
+    function onMove(moveEvent: MouseEvent) {
+      const next = Math.max(50, startWidth + (moveEvent.clientX - startX))
+      setGradeColumnWidths((current) => ({ ...current, [column]: next }))
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setGradeColumnWidths((current) => {
+        saveProcViewGradeWidths(current)
+        return current
+      })
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   function openTimeline() {
     try {
@@ -333,14 +406,36 @@ export function ProcurementDetailView({
       <div style={sectionStyle}>
         <h3 style={sectionTitleStyle}>4. Grades &amp; Pricing</h3>
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: '#ffffff' }}>
-          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '0.86rem', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: `${gradeColumnWidths.species}px` }} />
+              <col style={{ width: `${gradeColumnWidths.product}px` }} />
+              <col style={{ width: `${gradeColumnWidths.grade}px` }} />
+              <col style={{ width: `${gradeColumnWidths.offered}px` }} />
+              <col style={{ width: `${gradeColumnWidths.agreed}px` }} />
+            </colgroup>
             <thead>
               <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
-                <th style={headCell}>Species</th>
-                <th style={headCell}>Product</th>
-                <th style={headCell}>Grade</th>
-                <th style={headCellRight}>Offered $/t</th>
-                <th style={headCellRight}>Agreed $/t</th>
+                <th style={{ ...headCell, position: 'relative' }}>
+                  Species
+                  <span onMouseDown={(e) => startGradeColumnResize('species', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                </th>
+                <th style={{ ...headCell, position: 'relative' }}>
+                  Product
+                  <span onMouseDown={(e) => startGradeColumnResize('product', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                </th>
+                <th style={{ ...headCellCenter, position: 'relative' }}>
+                  Grade
+                  <span onMouseDown={(e) => startGradeColumnResize('grade', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                </th>
+                <th style={{ ...headCellCenter, position: 'relative' }}>
+                  Offered $/t
+                  <span onMouseDown={(e) => startGradeColumnResize('offered', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                </th>
+                <th style={{ ...headCellCenter, position: 'relative' }}>
+                  Agreed $/t
+                  <span onMouseDown={(e) => startGradeColumnResize('agreed', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -352,15 +447,23 @@ export function ProcurementDetailView({
                 </tr>
               ) : (
                 grades.map((g, idx) => {
+                  const isOffTBA =
+                    typeof g.OfferedPricePerTonne === 'string' &&
+                    g.OfferedPricePerTonne.trim().toLowerCase() === 'tba'
+
                   return (
                     <tr key={String(g.ProcurementGradeID || idx)} style={{ borderTop: '1px solid #e2e8f0' }}>
                       <td style={bodyCell}>{g.Species}</td>
                       <td style={bodyCell}><ProductTypeBadge productType={g.ProductType} /></td>
-                      <td style={{ ...bodyCell, fontWeight: 600 }}>{g.GradeName}</td>
-                      <td style={{ ...bodyCellRight, color: '#dc2626', fontWeight: 600 }}>
-                        ${money(Number(g.OfferedPricePerTonne) || 0)}
+                      <td style={{ ...bodyCellCenter, fontWeight: 600 }}>{g.GradeName}</td>
+                      <td style={{ ...bodyCellCenter, color: '#dc2626', fontWeight: 600 }}>
+                        {isOffTBA ? (
+                          <span style={{ fontStyle: 'italic', color: '#b45309' }}>TBA</span>
+                        ) : (
+                          `$${money(Number(g.OfferedPricePerTonne) || 0)}`
+                        )}
                       </td>
-                      <td style={{ ...bodyCellRight, fontWeight: 600 }}>
+                      <td style={{ ...bodyCellCenter, fontWeight: 600 }}>
                         {typeof g.AgreedPricePerTonne === 'string' && g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c') ? (
                           <span style={{ color: '#dc2626', fontStyle: 'italic', fontWeight: 600, background: '#fef2f2', padding: '2px 8px', borderRadius: '4px', border: '1px solid #fecaca' }}>
                             Cancelled
@@ -386,7 +489,7 @@ export function ProcurementDetailView({
                   <td colSpan={4} style={{ ...bodyCellRight, color: '#166534' }}>
                     Estimated Contract Commitment (AUD):
                   </td>
-                  <td style={{ ...bodyCellRight, color: '#15803d', fontWeight: 800 }}>
+                  <td style={{ ...bodyCellCenter, color: '#15803d', fontWeight: 800 }}>
                     ${money(totalValue)} AUD
                   </td>
                 </tr>
@@ -433,17 +536,21 @@ export function ProcurementDetailView({
         {/* General Notes */}
         <div style={{ ...sectionStyle, marginBottom: 0 }}>
           <h3 style={sectionTitleStyle}>6. General Notes</h3>
-          <div
-            style={{
-              fontSize: '0.9rem',
-              color: 'var(--text)',
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}
-          >
-            {procurement.Notes || '—'}
-          </div>
+          {procurement.Notes ? (
+            <div
+              className="note-html"
+              onClick={handleNotesClick}
+              style={{
+                fontSize: '0.9rem',
+                color: 'var(--text)',
+                lineHeight: 1.5,
+                wordBreak: 'break-word',
+              }}
+              dangerouslySetInnerHTML={{ __html: procurement.Notes }}
+            />
+          ) : (
+            <div style={{ fontSize: '0.9rem', color: 'var(--text)' }}>—</div>
+          )}
         </div>
       </div>
 
@@ -451,20 +558,14 @@ export function ProcurementDetailView({
       <div style={sectionStyle}>
         <h3 style={sectionTitleStyle}>7. Additional Notes</h3>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-          <textarea
-            rows={2}
-            placeholder="e.g. Called supplier to confirm harvest delay"
-            value={timelineNoteText}
-            onChange={(e) => onTimelineNoteChange(e.target.value)}
-            style={{
-              flex: 1,
-              padding: '8px 10px',
-              borderRadius: '6px',
-              border: '1px solid var(--border)',
-              background: '#fff',
-              fontSize: '0.85rem',
-            }}
-          />
+          <div style={{ flex: 1 }}>
+            <NoteEditor
+              value={timelineNoteText}
+              onChange={onTimelineNoteChange}
+              placeholder="e.g. Called supplier to confirm harvest delay, or paste a photo"
+              minHeight={60}
+            />
+          </div>
           <button
             type="button"
             onClick={onAddTimelineNote}
@@ -563,6 +664,13 @@ export function ProcurementDetailView({
         onClose={() => setIsTimelineOpen(false)}
         procurementRef={procurement.ProcurementRef}
         events={timelineEvents}
+      />
+
+      <ImageLightboxModal
+        isOpen={Boolean(lightboxSrc)}
+        imageSrc={lightboxSrc}
+        title="Note picture"
+        onClose={() => setLightboxSrc(null)}
       />
     </div>
   )
