@@ -88,8 +88,8 @@ export type ProcurementGrade = {
   Species: string
   ProductType: 'Green' | 'Burnt' | string
   GradeName: string
-  OfferedPricePerTonne: number
-  AgreedPricePerTonne: number
+  OfferedPricePerTonne: number | string
+  AgreedPricePerTonne: number | string
   ResalePrice: number
   AgreedTonnes: number
   DeliveredTonnes: number

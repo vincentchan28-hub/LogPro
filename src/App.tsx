@@ -97,6 +97,16 @@ function readLastWorkbook(): string {
   }
 }
 
+const hidePriceHistoryKey = 'logpro.hidePriceHistory'
+
+function readHidePriceHistory(): boolean {
+  try {
+    return window.localStorage.getItem(hidePriceHistoryKey) === 'true'
+  } catch {
+    return false
+  }
+}
+
 function rememberWorkbook(workbookPath: string) {
   try {
     if (workbookPath) {
@@ -115,6 +125,19 @@ function App() {
   const [selectedWorkbook, setSelectedWorkbook] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [currentPage, setCurrentPage] = useState<Page>('procurements')
+  const [hidePriceHistory, setHidePriceHistory] = useState<boolean>(readHidePriceHistory)
+
+  const handleToggleHidePriceHistory = (hide: boolean) => {
+    setHidePriceHistory(hide)
+    try {
+      window.localStorage.setItem(hidePriceHistoryKey, String(hide))
+    } catch {
+      // Ignore storage issues
+    }
+    if (hide && currentPage === 'priceHistory') {
+      setCurrentPage('procurements')
+    }
+  }
   const [targetProcurementSupplierId, setTargetProcurementSupplierId] = useState<string | undefined>()
   const [targetProcurementContactId, setTargetProcurementContactId] = useState<string | undefined>()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -830,16 +853,18 @@ if (selectedWorkbook) {
 
           <nav className="main-navigation">
             <div className="nav-container">
-              {pageList.map((page) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  className={`nav-button ${currentPage === page.id ? 'nav-active' : ''}`}
-                  onClick={() => setCurrentPage(page.id)}
-                >
-                  {page.label}
-                </button>
-              ))}
+              {pageList
+                .filter((page) => !(hidePriceHistory && page.id === 'priceHistory'))
+                .map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    className={`nav-button ${currentPage === page.id ? 'nav-active' : ''}`}
+                    onClick={() => setCurrentPage(page.id)}
+                  >
+                    {page.label}
+                  </button>
+                ))}
             </div>
 
             <button
@@ -866,6 +891,8 @@ if (selectedWorkbook) {
           onOpenAddSupplier={() => openSupplierForm()}
           onRefresh={refreshWorkbookData}
           onWorkbookChanged={applyWorkbookResult}
+          hidePriceHistory={hidePriceHistory}
+          onToggleHidePriceHistory={handleToggleHidePriceHistory}
         />
 
         {isSupplierFormOpen && (

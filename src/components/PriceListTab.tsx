@@ -349,8 +349,14 @@ export function PriceListTab({
                         <td>{grade.GradeName}</td>
                         <td><ProductTypeBadge productType={grade.ProductType} /></td>
                         <td>
-                          AUD $
-                          {Number(grade.AgreedPricePerTonne || 0).toFixed(2)}
+                          {typeof grade.AgreedPricePerTonne === 'string' &&
+                          grade.AgreedPricePerTonne.trim().toLowerCase().startsWith('c') ? (
+                            <span style={{ color: '#b91c1c', fontStyle: 'italic', fontWeight: 600 }}>
+                              Cancelled
+                            </span>
+                          ) : (
+                            `AUD $${Number(grade.AgreedPricePerTonne || 0).toFixed(2)}`
+                          )}
                         </td>
                         <td>
                           <div

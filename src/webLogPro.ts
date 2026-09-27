@@ -241,18 +241,19 @@ function buildGradeTimelineLineHtml(g: ProcurementGrade): string {
   const gradeCol = padThenEscape(String(g.GradeName || ''), TIMELINE_COL_GRADE)
 
   const offered = Number(g.OfferedPricePerTonne || 0)
-  const agreed = Number(g.AgreedPricePerTonne || 0)
+  const isCancelledAgreed = typeof g.AgreedPricePerTonne === 'string' && g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+  const agreed = isCancelledAgreed ? 0 : Number(g.AgreedPricePerTonne || 0)
   const agreedTonnes = Number(g.AgreedTonnes || 0)
 
   const offeredText = offered > 0 ? `$${offered.toFixed(2)}` : ''
-  const agreedText = agreed > 0 ? `$${agreed.toFixed(2)}` : ''
+  const agreedText = isCancelledAgreed ? 'Cancel' : (agreed > 0 ? `$${agreed.toFixed(2)}` : '')
   const tonnesText = agreedTonnes > 0 ? `${agreedTonnes}t` : ''
 
   const offeredCol = offeredText
     ? `<span style="color:#dc2626;font-weight:600;">${padThenEscape(offeredText, TIMELINE_COL_PRICE)}</span>`
     : padThenEscape('', TIMELINE_COL_PRICE)
   const agreedCol = agreedText
-    ? `<span style="color:#16a34a;font-weight:600;">${padThenEscape(agreedText, TIMELINE_COL_PRICE)}</span>`
+    ? `<span style="color:${isCancelledAgreed ? '#b91c1c;font-style:italic' : '#16a34a'};font-weight:600;">${padThenEscape(agreedText, TIMELINE_COL_PRICE)}</span>`
     : padThenEscape('', TIMELINE_COL_PRICE)
 
   return `${productCol}${speciesCol}${gradeCol}${offeredCol}${agreedCol}${tonnesText}`
@@ -424,7 +425,11 @@ export function readProcurementGrades(
         ProductType: String(row.ProductType || 'Green'),
         GradeName: String(row.GradeName || ''),
         OfferedPricePerTonne: Number(row.OfferedPricePerTonne) || 0,
-        AgreedPricePerTonne: Number(row.AgreedPricePerTonne) || 0,
+        AgreedPricePerTonne:
+          typeof row.AgreedPricePerTonne === 'string' &&
+          row.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+            ? 'Cancelled'
+            : (Number(row.AgreedPricePerTonne) || 0),
         ResalePrice: Number(row.ResalePrice) || 0,
         AgreedTonnes: Number(row.AgreedTonnes) || 0,
         DeliveredTonnes: deliveredTonnes,
@@ -1303,7 +1308,11 @@ export const webLogPro = {
           ProductType: g.ProductType || 'Green',
           GradeName: String(g.GradeName || ''),
           OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
-          AgreedPricePerTonne: Number(g.AgreedPricePerTonne) || 0,
+          AgreedPricePerTonne:
+            typeof g.AgreedPricePerTonne === 'string' &&
+            g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+              ? 'Cancelled'
+              : (Number(g.AgreedPricePerTonne) || 0),
           ResalePrice: Number(g.ResalePrice) || 0,
           AgreedTonnes: Number(g.AgreedTonnes) || 0,
           DeliveredTonnes: delivered,
@@ -1451,7 +1460,11 @@ export const webLogPro = {
           ProductType: g.ProductType || 'Green',
           GradeName: String(g.GradeName || ''),
           OfferedPricePerTonne: Number(g.OfferedPricePerTonne) || 0,
-          AgreedPricePerTonne: Number(g.AgreedPricePerTonne) || 0,
+          AgreedPricePerTonne:
+            typeof g.AgreedPricePerTonne === 'string' &&
+            g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+              ? 'Cancelled'
+              : (Number(g.AgreedPricePerTonne) || 0),
           ResalePrice: Number(g.ResalePrice) || 0,
           AgreedTonnes: Number(g.AgreedTonnes) || 0,
           DeliveredTonnes: delivered,
@@ -1479,8 +1492,12 @@ export const webLogPro = {
             (og.GradeName.trim().toLowerCase() === newG.GradeName.trim().toLowerCase() &&
               og.ProductType === newG.ProductType),
         )
+        const isOldCancelled = typeof oldG?.AgreedPricePerTonne === 'string' && oldG.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+        const isNewCancelled = typeof newG.AgreedPricePerTonne === 'string' && newG.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
         if (
           oldG &&
+          !isOldCancelled &&
+          !isNewCancelled &&
           Number(oldG.AgreedPricePerTonne) > 0 &&
           Number(newG.AgreedPricePerTonne) > 0 &&
           Math.abs(Number(oldG.AgreedPricePerTonne) - Number(newG.AgreedPricePerTonne)) > 0.001

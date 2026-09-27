@@ -93,13 +93,6 @@ function money(value: number): string {
   })
 }
 
-function tonnes(value: number): string {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })
-}
-
 const headCell: CSSProperties = {
   padding: '8px 10px',
   textAlign: 'left',
@@ -152,20 +145,14 @@ export function ProcurementDetailView({
     setIsTimelineOpen(true)
   }
 
-  let totalAgreed = 0
-  let totalDelivered = 0
   let totalValue = 0
 
   for (const g of grades) {
     const agreed = Number(g.AgreedTonnes) || 0
-    const delivered = Number(g.DeliveredTonnes) || 0
-    const price = Number(g.AgreedPricePerTonne) || 0
-    totalAgreed += agreed
-    totalDelivered += delivered
+    const isCancelled = typeof g.AgreedPricePerTonne === 'string' && g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+    const price = isCancelled ? 0 : (Number(g.AgreedPricePerTonne) || 0)
     totalValue += agreed * price
   }
-
-  const totalRemaining = Math.max(0, totalAgreed - totalDelivered)
 
   const contactDetailString = [
     contact?.Role,
@@ -334,14 +321,19 @@ export function ProcurementDetailView({
                 : '—'
             }
           />
+          {procurement.ForceWeeklyForecast && (
+            <div style={{ marginTop: '8px', fontSize: '0.82rem', color: '#0369a1', fontWeight: 600 }}>
+              ✓ Always include in weekly forecast
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 4. Grades, Products, Prices & Tonnes Table */}
+      {/* 4. Grades & Pricing Table */}
       <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>4. Grades, Products, Prices &amp; Tonnes</h3>
+        <h3 style={sectionTitleStyle}>4. Grades &amp; Pricing</h3>
         <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px', background: '#ffffff' }}>
-          <table style={{ width: '100%', minWidth: '750px', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+          <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
             <thead>
               <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
                 <th style={headCell}>Species</th>
@@ -349,60 +341,57 @@ export function ProcurementDetailView({
                 <th style={headCell}>Grade</th>
                 <th style={headCellRight}>Offered $/t</th>
                 <th style={headCellRight}>Agreed $/t</th>
-                <th style={headCellRight}>Agreed t</th>
-                <th style={headCellRight}>Delivered t</th>
-                <th style={headCellRight}>Remaining t</th>
               </tr>
             </thead>
             <tbody>
               {grades.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ ...bodyCell, textAlign: 'center', color: 'var(--muted)', padding: '16px' }}>
+                  <td colSpan={5} style={{ ...bodyCell, textAlign: 'center', color: 'var(--muted)', padding: '16px' }}>
                     No grades entered.
                   </td>
                 </tr>
               ) : (
                 grades.map((g, idx) => {
-                  const agreed = Number(g.AgreedTonnes) || 0
-                  const delivered = Number(g.DeliveredTonnes) || 0
-
                   return (
                     <tr key={String(g.ProcurementGradeID || idx)} style={{ borderTop: '1px solid #e2e8f0' }}>
                       <td style={bodyCell}>{g.Species}</td>
                       <td style={bodyCell}><ProductTypeBadge productType={g.ProductType} /></td>
                       <td style={{ ...bodyCell, fontWeight: 600 }}>{g.GradeName}</td>
-                      <td style={bodyCellRight}>${money(Number(g.OfferedPricePerTonne) || 0)}</td>
-                      <td style={{ ...bodyCellRight, fontWeight: 600 }}>
-                        ${money(Number(g.AgreedPricePerTonne) || 0)}
+                      <td style={{ ...bodyCellRight, color: '#dc2626', fontWeight: 600 }}>
+                        ${money(Number(g.OfferedPricePerTonne) || 0)}
                       </td>
-                      <td style={bodyCellRight}>{tonnes(agreed)}</td>
-                      <td style={bodyCellRight}>{tonnes(delivered)}</td>
-                      <td style={{ ...bodyCellRight, fontWeight: 700 }}>
-                        {tonnes(Math.max(0, agreed - delivered))}
+                      <td style={{ ...bodyCellRight, fontWeight: 600 }}>
+                        {typeof g.AgreedPricePerTonne === 'string' && g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c') ? (
+                          <span style={{ color: '#dc2626', fontStyle: 'italic', fontWeight: 600, background: '#fef2f2', padding: '2px 8px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                            Cancelled
+                          </span>
+                        ) : (Number(g.AgreedPricePerTonne) || 0) === 0 ? (
+                          <span style={{ color: '#0f172a' }}>
+                            $0.00
+                          </span>
+                        ) : (
+                          <span style={{ color: '#16a34a' }}>
+                            ${money(Number(g.AgreedPricePerTonne) || 0)}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )
                 })
               )}
             </tbody>
-            <tfoot>
-              <tr style={{ background: '#f8fafc', fontWeight: 700, borderTop: '2px solid #e2e8f0' }}>
-                <td colSpan={5} style={{ ...bodyCellRight }}>
-                  Agreement Totals:
-                </td>
-                <td style={bodyCellRight}>{tonnes(totalAgreed)} t</td>
-                <td style={bodyCellRight}>{tonnes(totalDelivered)} t</td>
-                <td style={bodyCellRight}>{tonnes(totalRemaining)} t</td>
-              </tr>
-              <tr style={{ background: '#f0fdf4', fontWeight: 700 }}>
-                <td colSpan={5} style={{ ...bodyCellRight, color: '#166534' }}>
-                  Estimated Contract Commitment (AUD):
-                </td>
-                <td colSpan={3} style={{ ...bodyCell, color: '#15803d' }}>
-                  ${money(totalValue)} AUD
-                </td>
-              </tr>
-            </tfoot>
+            {totalValue > 0 && (
+              <tfoot>
+                <tr style={{ background: '#f0fdf4', fontWeight: 700, borderTop: '2px solid #e2e8f0' }}>
+                  <td colSpan={4} style={{ ...bodyCellRight, color: '#166534' }}>
+                    Estimated Contract Commitment (AUD):
+                  </td>
+                  <td style={{ ...bodyCellRight, color: '#15803d', fontWeight: 800 }}>
+                    ${money(totalValue)} AUD
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

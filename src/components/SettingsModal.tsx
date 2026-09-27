@@ -19,6 +19,7 @@ import {
   Archive,
   RotateCcw,
   AlertTriangle,
+  EyeOff,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -108,6 +109,8 @@ type SettingsModalProps = {
   onOpenAddSupplier: () => void
   onRefresh: () => void
   onWorkbookChanged?: (result: WorkbookResult) => void
+  hidePriceHistory?: boolean
+  onToggleHidePriceHistory?: (hide: boolean) => void
 }
 
 export function SettingsModal({
@@ -118,6 +121,8 @@ export function SettingsModal({
   onOpenAddSupplier,
   onRefresh,
   onWorkbookChanged,
+  hidePriceHistory = false,
+  onToggleHidePriceHistory,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('speciesGrades')
   const [hasCopiedLocation, setHasCopiedLocation] = useState(false)
@@ -2323,6 +2328,51 @@ export function SettingsModal({
                       <RotateCcw size={15} />
                       {isRestoring ? 'Restoring…' : 'Restore'}
                     </button>
+                  </div>
+                </div>
+
+                {/* Page Visibility / Navigation card */}
+                <div className="tool-card" style={{ gridColumn: '1 / -1', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <div className="tool-card-icon bg-blue-light">
+                    <EyeOff size={22} className="text-blue" />
+                  </div>
+
+                  <div className="tool-card-body">
+                    <h5>Page Visibility & Navigation</h5>
+
+                    <p>
+                      Optionally hide application pages that you do not need yet from the main navigation menu.
+                    </p>
+
+                    <div style={{ marginTop: '12px' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          fontSize: '0.88rem',
+                          color: '#1e293b',
+                          padding: '8px 12px',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          userSelect: 'none',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(hidePriceHistory)}
+                          onChange={(e) => onToggleHidePriceHistory?.(e.target.checked)}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        <span>Hide Price History page</span>
+                      </label>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
+                        When checked, the Price History tab is removed from the top navigation bar.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

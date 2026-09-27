@@ -81,6 +81,33 @@ function getNextRowTempId(): string {
   return `row-${rowCounter}`
 }
 
+function isGradeCancelled(price: string | number | undefined): boolean {
+  if (price === undefined || price === null || price === '') return false
+  if (typeof price === 'string') {
+    const lower = price.trim().toLowerCase()
+    return lower === 'cancelled' || lower === 'cancel' || lower === 'c'
+  }
+  return false
+}
+
+function isProcurementAgreed(
+  grades: { OfferedPricePerTonne?: string | number; AgreedPricePerTonne?: string | number }[],
+): boolean {
+  if (!grades || grades.length === 0) return false
+  for (const g of grades) {
+    // 1. Offered column can be 0 or empty; it does not need a mandatory value to agree
+    // 2. Agreed column: all grades must have a value (> 0) or be marked 'Cancelled'
+    if (isGradeCancelled(g.AgreedPricePerTonne)) {
+      continue
+    }
+    const agreedNum = Number(g.AgreedPricePerTonne)
+    if (isNaN(agreedNum) || agreedNum <= 0) {
+      return false
+    }
+  }
+  return true
+}
+
 type ProcurementHeaderSource = Exclude<ProcurementHeaderMode, 'auto' | 'custom'>
 
 type ProcurementHeaderOption = {
@@ -559,32 +586,6 @@ export function ProcurementsTab({
     return Array.from(new Set(custom))
   }
 
-  // Calculate row and overall totals
-  const totals = useMemo(() => {
-    let totalAgreedTonnes = 0
-    let totalDeliveredTonnes = 0
-    let totalRemainingTonnes = 0
-    let estimatedTotalValue = 0
-
-    for (const r of gradeRows) {
-      const agreed = Number(r.AgreedTonnes) || 0
-      const delivered = Number(r.DeliveredTonnes) || 0
-      const remaining = Math.max(0, agreed - delivered)
-      const agreedPrice = Number(r.AgreedPricePerTonne) || 0
-
-      totalAgreedTonnes += agreed
-      totalDeliveredTonnes += delivered
-      totalRemainingTonnes += remaining
-      estimatedTotalValue += agreed * agreedPrice
-    }
-
-    return {
-      totalAgreedTonnes,
-      totalDeliveredTonnes,
-      totalRemainingTonnes,
-      estimatedTotalValue,
-    }
-  }, [gradeRows])
 
   // ---------------- Log Specification ----------------
 
@@ -827,7 +828,8 @@ export function ProcurementsTab({
     for (const [idx, row] of gradeRows.entries()) {
       const rowNum = idx + 1
       const offered = Number(row.OfferedPricePerTonne) || 0
-      const agreedPrice = Number(row.AgreedPricePerTonne) || 0
+      const isCancelled = isGradeCancelled(row.AgreedPricePerTonne)
+      const agreedPrice = isCancelled ? 'Cancelled' : (Number(row.AgreedPricePerTonne) || 0)
       const agreedTonnes = Number(row.AgreedTonnes) || 0
       const deliveredTonnes = Number(row.DeliveredTonnes) || 0
       const gradeLabel = row.GradeName ? ` (${row.GradeName})` : ''
@@ -885,7 +887,7 @@ async function handleSaveNew(e?: FormEvent) {
         EndDate: finalAgreementEnd,
         WeeklyEstimatedTonnes:
           weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
-        Status: 'Active',
+        Status: isProcurementAgreed(gradeRows) ? 'Active' : 'Draft',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
         AcceptanceMethod: acceptanceMethod,
@@ -1007,7 +1009,7 @@ if (window.logPro?.addProcurementNote) {
         EndDate: finalAgreementEnd,
         WeeklyEstimatedTonnes:
           weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
-        Status: 'Active',
+        Status: isProcurementAgreed(gradeRows) ? 'Active' : 'Draft',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
         AcceptanceMethod: acceptanceMethod,
@@ -1028,8 +1030,12 @@ if (window.logPro?.addProcurementNote) {
             (og.GradeName.trim().toLowerCase() === String(newG.GradeName || '').trim().toLowerCase() &&
               og.ProductType === newG.ProductType),
         )
+        const isOldCancelled = isGradeCancelled(oldG?.AgreedPricePerTonne)
+        const isNewCancelled = isGradeCancelled(newG.AgreedPricePerTonne)
         if (
           oldG &&
+          !isOldCancelled &&
+          !isNewCancelled &&
           Number(oldG.AgreedPricePerTonne) > 0 &&
           Number(newG.AgreedPricePerTonne) > 0 &&
           Math.abs(Number(oldG.AgreedPricePerTonne) - Number(newG.AgreedPricePerTonne)) > 0.001
@@ -1191,12 +1197,38 @@ if (window.logPro?.addProcurementNote) {
 
   // Tonnes summary for a procurement in register
   function getProcurementTonnes(ref: string) {
+    if (selectedProcRef === ref && (mode === 'edit' || mode === 'new')) {
+      const agreed = gradeRows.reduce((sum, g) => sum + (Number(g.AgreedTonnes) || 0), 0)
+      const delivered = gradeRows.reduce((sum, g) => sum + (Number(g.DeliveredTonnes) || 0), 0)
+      const remaining = Math.max(0, agreed - delivered)
+      return { agreed, delivered, remaining }
+    }
     const grades = window.logPro.getProcurementGrades(workbookPath, ref)
     const agreed = grades.reduce((sum, g) => sum + (Number(g.AgreedTonnes) || 0), 0)
     const delivered = grades.reduce((sum, g) => sum + (Number(g.DeliveredTonnes) || 0), 0)
     const remaining = Math.max(0, agreed - delivered)
     return { agreed, delivered, remaining }
   }
+
+  // Check if a procurement meets all conditions to be Agreed (Confirmed)
+  const isProcConfirmed = useCallback(
+    (proc: Procurement) => {
+      if (selectedProcRef === proc.ProcurementRef && (mode === 'edit' || mode === 'new')) {
+        return isProcurementAgreed(gradeRows)
+      }
+      const grades = window.logPro.getProcurementGrades(workbookPath, proc.ProcurementRef)
+      return isProcurementAgreed(grades)
+    },
+    [selectedProcRef, mode, gradeRows, workbookPath],
+  )
+
+  const agreedProcurements = useMemo(() => {
+    return filteredProcurements.filter((p) => isProcConfirmed(p))
+  }, [filteredProcurements, isProcConfirmed])
+
+  const inNegotiationProcurements = useMemo(() => {
+    return filteredProcurements.filter((p) => !isProcConfirmed(p))
+  }, [filteredProcurements, isProcConfirmed])
 
   const badgeLabel =
     mode === 'edit'
@@ -1224,7 +1256,7 @@ if (window.logPro?.addProcurementNote) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <FileSpreadsheet size={28} color="var(--primary)" />
             <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text)' }}>
-              Procurement Agreement & Grades
+              Procurement Agreements
             </h2>
             {badgeLabel && (
               <span
@@ -1246,6 +1278,23 @@ if (window.logPro?.addProcurementNote) {
           </p>
         </div>
 
+        <button
+          type="button"
+          onClick={handleStartNew}
+          className="btn-primary"
+          style={{
+            width: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '8px 16px',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          <Plus size={16} /> Add Agreement
+        </button>
       </div>
 
       {/* Alert notices */}
@@ -1325,7 +1374,7 @@ if (window.logPro?.addProcurementNote) {
             </button>
             <div
               onClick={() => setIsSidebarCollapsed(false)}
-              title="Click to view register"
+              title="Click to view agreements ledger"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -1369,7 +1418,7 @@ if (window.logPro?.addProcurementNote) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <TableIcon size={18} color="var(--primary)" />
                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
-                  Register
+                  Agreements Ledger
                 </h3>
                 <span
                   style={{
@@ -1386,27 +1435,6 @@ if (window.logPro?.addProcurementNote) {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={handleStartNew}
-                  style={{
-                    width: 'auto',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '5px 12px',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    color: 'var(--primary-dark)',
-                    background: 'rgba(2, 132, 199, 0.12)',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Plus size={14} /> Add
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setIsSidebarCollapsed(true)}
@@ -1470,7 +1498,7 @@ if (window.logPro?.addProcurementNote) {
               >
                 <p style={{ margin: 0, fontWeight: 600 }}>No agreements found.</p>
                 <p style={{ margin: '4px 0 0', fontSize: '0.76rem' }}>
-                  Try adjusting search or status.
+                  Try adjusting search query.
                 </p>
               </div>
             ) : (
@@ -1478,170 +1506,335 @@ if (window.logPro?.addProcurementNote) {
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '8px',
+                  gap: '16px',
                   overflowY: 'auto',
                   flex: 1,
                   paddingRight: '2px',
                 }}
               >
-                {filteredProcurements.map((proc) => {
-                  const isSelected = selectedProcRef === proc.ProcurementRef
-                  const tonnes = getProcurementTonnes(proc.ProcurementRef)
-                  const suppName =
-                    suppliers.find(
-                      (s) =>
-                        String(s.SupplierID) === String(proc.SupplierID) ||
-                        String(s.SupplierReference) === String(proc.SupplierID),
-                    )?.SupplierName || `Supplier #${proc.SupplierID}`
+                {/* Helper card renderer */}
+                {(() => {
+                  const renderCard = (proc: Procurement, isConfirmed: boolean) => {
+                    const isSelected = selectedProcRef === proc.ProcurementRef
+                    const tonnes = getProcurementTonnes(proc.ProcurementRef)
+                    const suppName =
+                      suppliers.find(
+                        (s) =>
+                          String(s.SupplierID) === String(proc.SupplierID) ||
+                          String(s.SupplierReference) === String(proc.SupplierID),
+                      )?.SupplierName || `Supplier #${proc.SupplierID}`
 
-                  const harvestRange = proc.HarvestPeriodStart
-                    ? `${proc.HarvestPeriodStart}${proc.HarvestPeriodEnd ? ` – ${proc.HarvestPeriodEnd}` : ''}`
-                    : proc.StartDate
-                    ? `${proc.StartDate}${proc.EndDate ? ` – ${proc.EndDate}` : ''}`
-                    : ''
+                    const harvestRange = proc.HarvestPeriodStart
+                      ? `${proc.HarvestPeriodStart}${proc.HarvestPeriodEnd ? ` – ${proc.HarvestPeriodEnd}` : ''}`
+                      : proc.StartDate
+                      ? `${proc.StartDate}${proc.EndDate ? ` – ${proc.EndDate}` : ''}`
+                      : ''
 
-                  const volumeDisplay =
-                    tonnes.agreed > 0
-                      ? `${tonnes.agreed.toLocaleString(undefined, { maximumFractionDigits: 1 })} t`
-                      : '0 t'
-                  const headerDisplay = getProcurementHeaderDisplay(proc)
+                    const volumeDisplay =
+                      tonnes.agreed > 0
+                        ? `${tonnes.agreed.toLocaleString(undefined, { maximumFractionDigits: 1 })} t`
+                        : '0 t'
+                    const headerDisplay = getProcurementHeaderDisplay(proc)
 
-                  return (
-                    <div
-                      key={proc.ProcurementRef}
-                      onClick={() => handleSelectProcurement(proc)}
-                      style={{
-                        border: isSelected
-                          ? '2px solid var(--primary)'
-                          : '1px solid var(--border)',
-                        background: isSelected ? 'var(--primary-soft)' : '#ffffff',
-                        borderRadius: '8px',
-                        padding: '10px 12px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {/* Line 1: Ref + Spec Icon + Volume */}
+                    return (
                       <div
+                        key={proc.ProcurementRef}
+                        onClick={() => handleSelectProcurement(proc)}
                         style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          marginBottom: '4px',
+                          border: isSelected
+                            ? '2px solid var(--primary)'
+                            : isConfirmed
+                            ? '1px solid #bbf7d0'
+                            : '1px solid var(--border)',
+                          background: isSelected
+                            ? 'var(--primary-soft)'
+                            : isConfirmed
+                            ? '#fcfdfd'
+                            : '#ffffff',
+                          borderLeft: isSelected
+                            ? '4px solid var(--primary)'
+                            : isConfirmed
+                            ? '4px solid #16a34a'
+                            : '4px solid #f59e0b',
+                          borderRadius: '8px',
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-<strong
-  style={{
-    fontSize: '0.92rem',
-    color: isSelected ? 'var(--primary-dark)' : 'var(--text)',
-  }}
->
-  <span style={{ color: headerDisplay.isProcurementRef ? '#dc2626' : undefined }}>
-    {headerDisplay.text}
-  </span>
-</strong>
-{proc.LogSpecFileID && (
-  <span
-    onClick={(event) => {
-      event.stopPropagation()
-      void handleOpenSpec(proc.LogSpecFileID || '')
-    }}
-    title={`Log Spec: ${proc.LogSpecFileName || 'attached'} (click to open)`}
-    style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      color: 'var(--primary)',
-      cursor: 'pointer',
-    }}
-  >
-    <Paperclip size={13} />
-  </span>
-)}
-<button
-  onClick={(e) => {
-    e.stopPropagation()
-    openHeaderEditor(proc)
-  }}
-  title="Customize header"
-  aria-label={`Edit header for procurement ${proc.ProcurementRef}`}
-  style={{
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--primary)',
-    cursor: 'pointer',
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '2px 4px',
-    marginLeft: '6px',
-  }}
->
-  <Pencil size={13} />
-</button>
-</div>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
-                          {volumeDisplay}
-                        </span>
-                      </div>
+                        {/* Line 1: Edit Pencil + Ref/Title + Volume */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openHeaderEditor(proc)
+                              }}
+                              title="Customize header"
+                              aria-label={`Edit header for procurement ${proc.ProcurementRef}`}
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: 'var(--primary)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '2px 2px 2px 0',
+                              }}
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <strong
+                              style={{
+                                fontSize: '0.92rem',
+                                color: isSelected ? 'var(--primary-dark)' : 'var(--text)',
+                              }}
+                            >
+                              <span style={{ color: headerDisplay.isProcurementRef ? '#dc2626' : undefined }}>
+                                {headerDisplay.text}
+                              </span>
+                            </strong>
+                          </div>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
+                            {volumeDisplay}
+                          </span>
+                        </div>
 
-                      {/* Line 2: Supplier Name */}
-                      <div
-                        style={{
-                          fontSize: '0.88rem',
-                          fontWeight: 600,
-                          color: '#0f172a',
-                          marginBottom: '4px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                        title={suppName}
-                      >
-                        {suppName}
-                      </div>
-
-                      {/* Line 3: Procured Volume · Species · Harvest Date Range */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          fontSize: '0.76rem',
-                          color: '#64748b',
-                          flexWrap: 'wrap',
-                        }}
-                      >
-<span
-  style={{
-    maxWidth: '110px',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  }}
-  title={proc.Species || 'No species'}
->
-  {proc.Species || '—'}
-</span>
-                        {harvestRange && (
-                          <>
-                            <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
+                        {/* Line 2: Supplier Name + Status Tag (with attachment icon under tag) */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: '0.88rem',
+                              fontWeight: 600,
+                              color: '#0f172a',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              flex: 1,
+                              marginTop: '1px',
+                            }}
+                            title={suppName}
+                          >
+                            {suppName}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0 }}>
                             <span
                               style={{
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: '4px',
                                 whiteSpace: 'nowrap',
+                                background: isConfirmed ? '#dcfce7' : '#fef3c7',
+                                color: isConfirmed ? '#166534' : '#92400e',
+                                border: isConfirmed ? '1px solid #bbf7d0' : '1px solid #fde68a',
                               }}
-                              title={`Harvest / Commitment: ${harvestRange}`}
                             >
-                              {harvestRange}
+                              {isConfirmed ? 'Agreed' : 'In Negotiation'}
                             </span>
-                          </>
+                            {proc.LogSpecFileID && (
+                              <span
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleOpenSpec(proc.LogSpecFileID || '')
+                                }}
+                                title={`Log Spec: ${proc.LogSpecFileName || 'attached'} (click to open)`}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  color: 'var(--primary)',
+                                  cursor: 'pointer',
+                                  padding: '1px 2px',
+                                }}
+                              >
+                                <Paperclip size={12} />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Line 3: Species · Harvest Date Range */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.76rem',
+                            color: '#64748b',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <span
+                            style={{
+                              maxWidth: '110px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={proc.Species || 'No species'}
+                          >
+                            {proc.Species || '—'}
+                          </span>
+                          {harvestRange && (
+                            <>
+                              <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
+                              <span
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`Harvest / Commitment: ${harvestRange}`}
+                              >
+                                {harvestRange}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <>
+                      {/* Section 1: Agreed (Confirmed) */}
+                      <div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 6px 8px',
+                            borderBottom: '2px solid #bbf7d0',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 800,
+                              color: '#15803d',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            Agreed
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              background: '#dcfce7',
+                              color: '#166534',
+                              padding: '1px 8px',
+                              borderRadius: '12px',
+                              border: '1px solid #86efac',
+                            }}
+                          >
+                            {agreedProcurements.length}
+                          </span>
+                        </div>
+
+                        {agreedProcurements.length === 0 ? (
+                          <div
+                            style={{
+                              padding: '12px 10px',
+                              textAlign: 'center',
+                              color: '#94a3b8',
+                              fontSize: '0.78rem',
+                              fontStyle: 'italic',
+                              background: '#f8fafc',
+                              borderRadius: '6px',
+                              border: '1px dashed #e2e8f0',
+                            }}
+                          >
+                            No agreed procurements
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {agreedProcurements.map((proc) => renderCard(proc, true))}
+                          </div>
                         )}
                       </div>
-                    </div>
+
+                      {/* Section 2: In Negotiation (Draft) */}
+                      <div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '4px 6px 8px',
+                            borderBottom: '2px solid #fed7aa',
+                            marginBottom: '10px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 800,
+                              color: '#c2410c',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            In Negotiation
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              background: '#ffedd5',
+                              color: '#9a3412',
+                              padding: '1px 8px',
+                              borderRadius: '12px',
+                              border: '1px solid #fdba74',
+                            }}
+                          >
+                            {inNegotiationProcurements.length}
+                          </span>
+                        </div>
+
+                        {inNegotiationProcurements.length === 0 ? (
+                          <div
+                            style={{
+                              padding: '12px 10px',
+                              textAlign: 'center',
+                              color: '#94a3b8',
+                              fontSize: '0.78rem',
+                              fontStyle: 'italic',
+                              background: '#f8fafc',
+                              borderRadius: '6px',
+                              border: '1px dashed #e2e8f0',
+                            }}
+                          >
+                            No procurements in negotiation
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {inNegotiationProcurements.map((proc) => renderCard(proc, false))}
+                          </div>
+                        )}
+                      </div>
+                    </>
                   )
-                })}
+                })()}
               </div>
             )}
           </div>
@@ -2246,31 +2439,6 @@ if (window.logPro?.addProcurementNote) {
                         )}
                       </div>
                     )}
-
-                    {/* Weekly forecast override toggle */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                      <label
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          color: '#334155',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={forceWeeklyForecast}
-                          onChange={(e) => setForceWeeklyForecast(e.target.checked)}
-                          style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                        />
-                        {Boolean(startDate.trim() || endDate.trim() || harvestPeriodStart.trim() || harvestPeriodEnd.trim())
-                          ? 'Ignore this date range — keep including in the weekly delivery forecast after it ends'
-                          : 'Include in weekly delivery forecast even without a date range'}
-                      </label>
-                    </div>
                   </div>
                 )
               })()}
@@ -2526,6 +2694,29 @@ if (window.logPro?.addProcurementNote) {
                   <div style={{ color: 'var(--muted)', fontSize: '0.78rem', marginTop: '6px' }}>
                     Committed weekly tonnage delivery. Feeds the Weekly Delivery Schedule and Haulage Planner on the Home tab.
                   </div>
+
+                  {/* Always include in weekly forecast toggle */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                    <label
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        color: '#334155',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={forceWeeklyForecast}
+                        onChange={(e) => setForceWeeklyForecast(e.target.checked)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      Always include in weekly forecast
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -2552,11 +2743,40 @@ if (window.logPro?.addProcurementNote) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Layers size={18} color="var(--primary)" />
                     <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--primary-dark)' }}>
-                      4. Grades, Products, Prices &amp; Tonnes
+                      4. Grades &amp; Pricing
                     </h3>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {(() => {
+                      const isAgreed = isProcurementAgreed(gradeRows)
+                      return (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            background: isAgreed ? '#dcfce7' : '#fef3c7',
+                            color: isAgreed ? '#166534' : '#92400e',
+                            border: isAgreed ? '1px solid #86efac' : '1px solid #fde68a',
+                          }}
+                        >
+                          {isAgreed ? (
+                            <>
+                              <CheckCircle2 size={13} color="#16a34a" /> Status: Agreed (Confirmed)
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle size={13} color="#d97706" /> Status: In Negotiation (Draft)
+                            </>
+                          )}
+                        </span>
+                      )
+                    })()}
                     <button
                       type="button"
                       onClick={handleAddGradeRow}
@@ -2574,9 +2794,44 @@ if (window.logPro?.addProcurementNote) {
                   </div>
                 </div>
 
+                {/* Workflow Explanation Info Box */}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '10px',
+                    alignItems: 'flex-start',
+                    padding: '12px 14px',
+                    background: '#f0f9ff',
+                    border: '1px solid #bae6fd',
+                    borderRadius: '8px',
+                    marginBottom: '14px',
+                    fontSize: '0.82rem',
+                    color: '#0369a1',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <Info size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#0284c7' }} />
+                  <div>
+                    <strong style={{ color: '#0c4a6e', display: 'block', marginBottom: '3px' }}>
+                      Agreement Status &amp; Ledger Rules:
+                    </strong>
+                    <div>
+                      • <strong>Offered Column:</strong> Optional starting point (can be 0 or empty; does not require a value to agree). All values appear in <span style={{ color: '#dc2626', fontWeight: 700 }}>red</span>.
+                    </div>
+                    <div>
+                      • <strong>Agreed (Confirmed):</strong> As long as each grade has an agreed value (in <span style={{ color: '#16a34a', fontWeight: 700 }}>green</span>) or is marked <span style={{ color: '#dc2626', fontWeight: 700 }}>Cancelled</span>, the procurement is considered <em>Agreed</em> and placed at the top of the Agreements Ledger.
+                    </div>
+                    <div>
+                      • <strong>In Negotiation (Draft):</strong> When any grade is still 0 (in black) or has a pending unentered price. These remain under <em>In Negotiation</em>.
+                    </div>
+                    <div>
+                      • <strong>Quick Cancel Shortcut:</strong> Type <kbd style={{ background: '#ffffff', border: '1px solid #93c5fd', borderRadius: '3px', padding: '1px 5px', fontWeight: 700, color: '#0369a1' }}>c</kbd> in any Agreed $/t field to mark a grade as <span style={{ color: '#dc2626', fontWeight: 700 }}>Cancelled</span> (red text).
+                    </div>
+                  </div>
+                </div>
+
                 <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>
-                  Add one row for each grade/product combination. Standard grades come from the reference PDF;
-                  delivered and remaining tonnes calculate dynamically.
+                  Add one row for each grade/product combination. Standard grades come from the reference PDF.
                 </p>
 
                 {/* Table */}
@@ -2589,17 +2844,11 @@ if (window.logPro?.addProcurementNote) {
                         <th style={{ padding: '8px 10px', textAlign: 'left', minWidth: '130px' }}>Grade</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '95px' }}>Offered $/t</th>
                         <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed $/t *</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Agreed t *</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '100px' }}>Delivered t</th>
-                        <th style={{ padding: '8px 10px', textAlign: 'right', minWidth: '105px' }}>Remaining t</th>
                         <th style={{ padding: '8px 10px', textAlign: 'center', width: '45px' }}></th>
                       </tr>
                     </thead>
                     <tbody>
                       {gradeRows.map((row, idx) => {
-                        const agreed = Number(row.AgreedTonnes) || 0
-                        const delivered = Number(row.DeliveredTonnes) || 0
-                        const remaining = Math.max(0, agreed - delivered)
                         const availableGrades = getGradesFor(row.Species, row.ProductType)
 
                         return (
@@ -2694,84 +2943,100 @@ if (window.logPro?.addProcurementNote) {
                                   borderRadius: '4px',
                                   border: '1px solid #cbd5e1',
                                   fontSize: '0.85rem',
-                                }}
-                              />
-                            </td>
-
-                            <td style={{ padding: '6px 8px' }}>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                value={row.AgreedPricePerTonne}
-                                onChange={(e) =>
-                                  handleGradeRowChange(idx, 'AgreedPricePerTonne', e.target.value)
-                                }
-                                style={{
-                                  width: '100%',
-                                  textAlign: 'right',
-                                  padding: '6px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #cbd5e1',
-                                  fontSize: '0.85rem',
                                   fontWeight: 600,
+                                  color: '#dc2626',
                                 }}
                               />
                             </td>
 
                             <td style={{ padding: '6px 8px' }}>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0"
-                                value={row.AgreedTonnes}
-                                onChange={(e) =>
-                                  handleGradeRowChange(idx, 'AgreedTonnes', e.target.value)
-                                }
-                                style={{
-                                  width: '100%',
-                                  textAlign: 'right',
-                                  padding: '6px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #cbd5e1',
-                                  fontSize: '0.85rem',
-                                  fontWeight: 600,
-                                }}
-                              />
-                            </td>
+                              {(() => {
+                                const isCancelled = isGradeCancelled(row.AgreedPricePerTonne)
+                                const raw = String(row.AgreedPricePerTonne ?? '').trim()
+                                const num = Number(row.AgreedPricePerTonne)
+                                const isZero = raw !== '' && !isCancelled && !isNaN(num) && num === 0
+                                const isPositive = !isCancelled && !isNaN(num) && num > 0
 
-                            <td style={{ padding: '6px 8px' }}>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0"
-                                value={row.DeliveredTonnes}
-                                onChange={(e) =>
-                                  handleGradeRowChange(idx, 'DeliveredTonnes', e.target.value)
-                                }
-                                style={{
-                                  width: '100%',
-                                  textAlign: 'right',
-                                  padding: '6px 8px',
-                                  borderRadius: '4px',
-                                  border: '1px solid #cbd5e1',
-                                  fontSize: '0.85rem',
-                                }}
-                              />
-                            </td>
+                                let textColor = '#0f172a' // 0 value and empty remain black
+                                let borderColor = '#cbd5e1'
+                                let bgColor = '#ffffff'
 
-                            <td
-                              style={{
-                                padding: '6px 12px',
-                                textAlign: 'right',
-                                fontWeight: 700,
-                                color: remaining > 0 ? '#0369a1' : '#16a34a',
-                              }}
-                            >
-                              {remaining.toLocaleString(undefined, {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2,
-                              })}
+                                if (isCancelled) {
+                                  textColor = '#dc2626' // Cancelled status in red text
+                                  borderColor = '#fca5a5'
+                                  bgColor = '#fef2f2'
+                                } else if (isZero) {
+                                  textColor = '#0f172a' // 0 remains black
+                                  borderColor = '#cbd5e1'
+                                  bgColor = '#ffffff'
+                                } else if (isPositive) {
+                                  textColor = '#16a34a' // agreed values in green
+                                  borderColor = '#86efac'
+                                  bgColor = '#f0fdf4'
+                                }
+
+                                return (
+                                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                      type="text"
+                                      placeholder="0.00 or 'c'"
+                                      value={row.AgreedPricePerTonne}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'c' || e.key === 'C') {
+                                          e.preventDefault()
+                                          handleGradeRowChange(idx, 'AgreedPricePerTonne', 'Cancelled')
+                                        } else if (isCancelled && (e.key === 'Backspace' || e.key === 'Delete')) {
+                                          e.preventDefault()
+                                          handleGradeRowChange(idx, 'AgreedPricePerTonne', '')
+                                        }
+                                      }}
+                                      onChange={(e) => {
+                                        const rawInput = e.target.value
+                                        const lower = rawInput.toLowerCase().trim()
+                                        if (lower === 'c' || lower === 'cancel' || lower === 'cancelled') {
+                                          handleGradeRowChange(idx, 'AgreedPricePerTonne', 'Cancelled')
+                                        } else if (rawInput === '' || /^[0-9]*\.?[0-9]*$/.test(rawInput)) {
+                                          handleGradeRowChange(idx, 'AgreedPricePerTonne', rawInput)
+                                        } else if (rawInput.toLowerCase().includes('c')) {
+                                          handleGradeRowChange(idx, 'AgreedPricePerTonne', 'Cancelled')
+                                        }
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        textAlign: isCancelled ? 'center' : 'right',
+                                        padding: isCancelled ? '6px 20px 6px 8px' : '6px 8px',
+                                        borderRadius: '4px',
+                                        border: isCancelled ? '1.5px solid #fca5a5' : `1px solid ${borderColor}`,
+                                        background: bgColor,
+                                        color: textColor,
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                      }}
+                                    />
+                                    {isCancelled && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleGradeRowChange(idx, 'AgreedPricePerTonne', '')}
+                                        title="Clear Cancelled"
+                                        style={{
+                                          position: 'absolute',
+                                          right: '4px',
+                                          background: 'transparent',
+                                          border: 'none',
+                                          color: '#dc2626',
+                                          fontSize: '13px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          padding: '0 4px',
+                                          lineHeight: 1,
+                                        }}
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })()}
                             </td>
 
                             <td style={{ padding: '6px 4px', textAlign: 'center' }}>
@@ -2796,27 +3061,9 @@ if (window.logPro?.addProcurementNote) {
                       })}
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
-                        <td colSpan={5} style={{ padding: '10px 12px', textAlign: 'right' }}>
-                          Agreement Totals:
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', color: '#0f172a' }}>
-                          {totals.totalAgreedTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                        </td>
-                        <td style={{ padding: '10px 8px', textAlign: 'right', color: '#16a34a' }}>
-                          {totals.totalDeliveredTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#0284c7' }}>
-                          {totals.totalRemainingTonnes.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
-                        </td>
-                        <td></td>
-                      </tr>
-                      <tr style={{ background: '#f0fdf4', borderTop: '1px solid #bbf7d0' }}>
-                        <td colSpan={5} style={{ padding: '8px 12px', textAlign: 'right', color: '#166534', fontWeight: 600 }}>
-                          Estimated Contract Commitment (AUD):
-                        </td>
-                        <td colSpan={4} style={{ padding: '8px 12px', textAlign: 'left', color: '#15803d', fontWeight: 800 }}>
-                          ${totals.estimatedTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} AUD
+                      <tr style={{ background: '#f8fafc', fontWeight: 600, color: 'var(--muted)', fontSize: '0.82rem' }}>
+                        <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          {gradeRows.length} {gradeRows.length === 1 ? 'grade configured' : 'grades configured'}
                         </td>
                       </tr>
                     </tfoot>
