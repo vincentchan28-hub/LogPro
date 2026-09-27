@@ -38,6 +38,15 @@ export type SupplierContact = {
   IsPrimary: boolean
 }
 
+export type ProcurementHeaderMode =
+  | 'auto'
+  | 'contract-number'
+  | 'harvest'
+  | 'coupe'
+  | 'block'
+  | 'plantation'
+  | 'custom'
+
 export type Procurement = {
   ProcurementID?: number | string
   ProcurementRef: string
@@ -45,6 +54,7 @@ export type Procurement = {
   ContactID: number | string
   AgreementType: 'Block' | 'Coupe' | 'Harvest' | 'Contract Number' | string
   AgreementDetail: string
+  ContractNumber?: string
   Plantation: string
   Species: string
   HarvestPeriodStart: string
@@ -68,6 +78,8 @@ export type Procurement = {
   ChangedDate?: string
   ForceWeeklyForecast?: boolean
   ActivityLog?: string
+  CustomHeader?: string
+  HeaderDisplayMode?: ProcurementHeaderMode | ''
 }
 
 export type ProcurementGrade = {

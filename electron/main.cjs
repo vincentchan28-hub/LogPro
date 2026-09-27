@@ -330,6 +330,7 @@ const workbookHeaders = {
     'ContactID',
     'AgreementType',
     'AgreementDetail',
+    'ContractNumber',
     'Plantation',
     'Species',
     'HarvestPeriodStart',
@@ -346,6 +347,8 @@ const workbookHeaders = {
     'LogSpecFileName',
     'LogSpecFileType',
     'Notes',
+    'CustomHeader',
+    'HeaderDisplayMode',
     'CreatedBy',
     'CreatedDate',
     'ChangedBy',
@@ -625,6 +628,134 @@ function writeSuppliers(workbook, rows) {
   workbook.Sheets.Suppliers = worksheet;
 }
 
+function readProcurements(workbook) {
+  const worksheet = workbook.Sheets.Procurements;
+
+  if (!worksheet) {
+    return [];
+  }
+
+  return XLSX.utils
+    .sheet_to_json(worksheet, { defval: '' })
+    .map((row) => ({
+      ...row,
+      ProcurementID: row.ProcurementID ?? '',
+      ProcurementRef: String(row.ProcurementRef ?? '').trim(),
+      SupplierID: row.SupplierID ?? '',
+      ContactID: row.ContactID ?? '',
+      AgreementType: String(row.AgreementType ?? ''),
+      AgreementDetail: String(row.AgreementDetail ?? ''),
+      ContractNumber: String(row.ContractNumber ?? ''),
+      Plantation: String(row.Plantation ?? ''),
+      Species: String(row.Species ?? ''),
+      Status: String(row.Status ?? ''),
+      CustomHeader: String(row.CustomHeader ?? ''),
+      HeaderDisplayMode: String(row.HeaderDisplayMode ?? ''),
+    }))
+    .filter((row) => row.ProcurementRef !== '');
+}
+
+function writeProcurements(workbook, rows) {
+  const headers = workbookHeaders.Procurements;
+  const worksheet = XLSX.utils.json_to_sheet(rows, {
+    header: headers,
+  });
+
+  worksheet['!cols'] = headers.map(() => ({ wch: 24 }));
+  workbook.Sheets.Procurements = worksheet;
+}
+
+ipcMain.handle(
+  'update-procurement-field',
+  async (_event, workbookPath, procurementRef, updates, legacyValue) => {
+    if (!workbookPath) {
+      return { ok: false, error: 'No workbook is open.' };
+    }
+
+    if (!procurementRef) {
+      return { ok: false, error: 'No procurement was selected.' };
+    }
+
+    const allowedFields = ['CustomHeader', 'HeaderDisplayMode'];
+    const allowedModes = [
+      'auto',
+      'contract-number',
+      'harvest',
+      'coupe',
+      'block',
+      'plantation',
+      'custom',
+    ];
+    const fieldUpdates =
+      typeof updates === 'string' ? { [updates]: legacyValue } : updates;
+    const updateEntries =
+      fieldUpdates && typeof fieldUpdates === 'object'
+        ? Object.entries(fieldUpdates)
+        : [];
+
+    if (
+      updateEntries.length === 0 ||
+      updateEntries.some(([fieldName, value]) =>
+        !allowedFields.includes(fieldName) || typeof value !== 'string',
+      ) ||
+      (fieldUpdates.HeaderDisplayMode !== undefined &&
+        !allowedModes.includes(fieldUpdates.HeaderDisplayMode))
+    ) {
+      return { ok: false, error: 'This field cannot be updated here.' };
+    }
+
+    const { workbook, error } = openWorkbookFile(workbookPath);
+
+    if (!workbook) {
+      return { ok: false, error };
+    }
+
+    try {
+      await retryWhileLocked('backup', () =>
+        createBackupOncePerSession(workbookPath),
+      );
+
+      const procurements = readProcurements(workbook);
+      const target = procurements.find(
+        (row) =>
+          String(row.ProcurementRef).trim() ===
+          String(procurementRef).trim(),
+      );
+
+      if (!target) {
+        return {
+          ok: false,
+          error: `Procurement ${procurementRef} could not be found.`,
+        };
+      }
+
+      for (const [fieldName, fieldValue] of updateEntries) {
+        target[fieldName] = fieldValue.trim();
+      }
+      target.ChangedDate = new Date().toISOString();
+
+      writeProcurements(workbook, procurements);
+
+      await retryWhileLocked('write', () =>
+        XLSX.writeFile(workbook, workbookPath),
+      );
+
+      return {
+        ok: true,
+        error: '',
+        procurement: target,
+      };
+    } catch (saveError) {
+      console.error('Could not update procurement field:', saveError);
+
+      return {
+        ok: false,
+        error: friendlyError(saveError, 'save the procurement header'),
+      };
+    }
+  },
+);
+
 ipcMain.handle('workbook:open', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Select a LogPro workbook',
@@ -688,6 +819,7 @@ ipcMain.handle('workbook:writeFile', async (_event, workbookPath, base64Data) =>
     return { ok: false, error: friendlyError(error, 'save the workbook') };
   }
 });
+
 
 ipcMain.handle('workbook:create', async () => {
   const result = await dialog.showSaveDialog({

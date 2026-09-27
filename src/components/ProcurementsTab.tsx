@@ -18,11 +18,13 @@ import {
   Info,
   Truck,
   MoreVertical,
+  Pencil,
 } from 'lucide-react'
 import {
   type Supplier,
   type SupplierContact,
   type Procurement,
+  type ProcurementHeaderMode,
   type ProcurementGrade,
   type SpeciesDefinition,
   type GradeDefinition,
@@ -79,6 +81,75 @@ function getNextRowTempId(): string {
   return `row-${rowCounter}`
 }
 
+type ProcurementHeaderSource = Exclude<ProcurementHeaderMode, 'auto' | 'custom'>
+
+type ProcurementHeaderOption = {
+  mode: ProcurementHeaderSource
+  label: string
+  text: string
+}
+
+function getProcurementHeaderOptions(procurement: Procurement): ProcurementHeaderOption[] {
+  const agreementType = String(procurement.AgreementType || '').trim().toLowerCase()
+  const agreementDetail = String(procurement.AgreementDetail || '').trim()
+  const harvestRange = procurement.HarvestPeriodStart
+    ? `${procurement.HarvestPeriodStart}${procurement.HarvestPeriodEnd ? ` – ${procurement.HarvestPeriodEnd}` : ''}`
+    : procurement.StartDate
+    ? `${procurement.StartDate}${procurement.EndDate ? ` – ${procurement.EndDate}` : ''}`
+    : ''
+
+  const options: ProcurementHeaderOption[] = [
+    {
+      mode: 'contract-number',
+      label: 'Contract Number Details',
+      text:
+        String(procurement.ContractNumber || '').trim() ||
+        (agreementType === 'contract number' ? agreementDetail : ''),
+    },
+    {
+      mode: 'harvest',
+      label: 'Harvest Details',
+      text: (agreementType === 'harvest' ? agreementDetail : '') || harvestRange,
+    },
+    {
+      mode: 'coupe',
+      label: 'Coupe Details',
+      text: agreementType === 'coupe' ? agreementDetail : '',
+    },
+    {
+      mode: 'block',
+      label: 'Block Details',
+      text: agreementType === 'block' ? agreementDetail : '',
+    },
+    {
+      mode: 'plantation',
+      label: 'Plantation Name',
+      text: String(procurement.Plantation || '').trim(),
+    },
+  ]
+
+  return options.filter((option) => option.text !== '')
+}
+
+function getProcurementHeaderDisplay(procurement: Procurement) {
+  const options = getProcurementHeaderOptions(procurement)
+  const defaultText = options[0]?.text || ''
+  const mode =
+    procurement.HeaderDisplayMode ||
+    (String(procurement.CustomHeader || '').trim() ? 'custom' : 'auto')
+  const selectedText =
+    mode === 'custom'
+      ? String(procurement.CustomHeader || '').trim()
+      : mode === 'auto'
+      ? ''
+      : options.find((option) => option.mode === mode)?.text || ''
+
+  return {
+    text: selectedText || defaultText || procurement.ProcurementRef,
+    isProcurementRef: !selectedText && !defaultText,
+  }
+}
+
 export function ProcurementsTab({
   workbookPath,
   suppliers,
@@ -113,6 +184,11 @@ export function ProcurementsTab({
     payload: Partial<Procurement>
     grades: Partial<ProcurementGrade>[]
   } | null>(null)
+  const [editingHeaderProcurement, setEditingHeaderProcurement] = useState<Procurement | null>(null)
+  const [headerModeDraft, setHeaderModeDraft] = useState<ProcurementHeaderMode>('auto')
+  const [headerDraft, setHeaderDraft] = useState('')
+  const [headerEditError, setHeaderEditError] = useState('')
+  const [isSavingHeader, setIsSavingHeader] = useState(false)
 
   // Status alerts
   const [errorMsg, setErrorMsg] = useState('')
@@ -167,6 +243,59 @@ export function ProcurementsTab({
     setDeleteStep(0)
     if (selectedProcRef) {
       await handleDeleteProcurement(selectedProcRef)
+    }
+  }
+
+  function openHeaderEditor(procurement: Procurement) {
+    setEditingHeaderProcurement(procurement)
+    const storedMode =
+      procurement.HeaderDisplayMode ||
+      (String(procurement.CustomHeader || '').trim() ? 'custom' : 'auto')
+    const modeIsAvailable =
+      storedMode === 'auto' ||
+      storedMode === 'custom' ||
+      getProcurementHeaderOptions(procurement).some((option) => option.mode === storedMode)
+    setHeaderModeDraft(modeIsAvailable ? storedMode : 'auto')
+    setHeaderDraft(String(procurement.CustomHeader || '').trim())
+    setHeaderEditError('')
+  }
+
+  async function handleSaveCustomHeader(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!editingHeaderProcurement || isSavingHeader) return
+
+    setIsSavingHeader(true)
+    setHeaderEditError('')
+
+    try {
+      const result = await window.logPro.updateProcurementField(
+        workbookPath,
+        editingHeaderProcurement.ProcurementRef,
+        {
+          HeaderDisplayMode: headerModeDraft,
+          ...(headerModeDraft === 'custom'
+            ? { CustomHeader: headerDraft.trim() }
+            : {}),
+        },
+      )
+
+      if (result.error) {
+        setHeaderEditError(result.error)
+        return
+      }
+
+      const refreshed = await window.logPro.loadWorkbook(workbookPath)
+      if (refreshed.error) {
+        setHeaderEditError(`Header saved, but the workbook could not be refreshed: ${refreshed.error}`)
+        return
+      }
+
+      loadData()
+      setEditingHeaderProcurement(null)
+    } catch (error: any) {
+      setHeaderEditError(error?.message || 'Could not save the custom header.')
+    } finally {
+      setIsSavingHeader(false)
     }
   }
 
@@ -1375,6 +1504,7 @@ if (window.logPro?.addProcurementNote) {
                     tonnes.agreed > 0
                       ? `${tonnes.agreed.toLocaleString(undefined, { maximumFractionDigits: 1 })} t`
                       : '0 t'
+                  const headerDisplay = getProcurementHeaderDisplay(proc)
 
                   return (
                     <div
@@ -1401,32 +1531,55 @@ if (window.logPro?.addProcurementNote) {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <strong
-                            style={{
-                              fontSize: '0.92rem',
-                              color: isSelected ? 'var(--primary-dark)' : 'var(--text)',
-                            }}
-                          >
-                            {proc.ProcurementRef}
-                          </strong>
-                          {proc.LogSpecFileID && (
-                            <span
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                void handleOpenSpec(proc.LogSpecFileID || '')
-                              }}
-                              title={`Log Spec: ${proc.LogSpecFileName || 'attached'} (click to open)`}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                color: 'var(--primary)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Paperclip size={13} />
-                            </span>
-                          )}
-                        </div>
+<strong
+  style={{
+    fontSize: '0.92rem',
+    color: isSelected ? 'var(--primary-dark)' : 'var(--text)',
+  }}
+>
+  <span style={{ color: headerDisplay.isProcurementRef ? '#dc2626' : undefined }}>
+    {headerDisplay.text}
+  </span>
+</strong>
+{proc.LogSpecFileID && (
+  <span
+    onClick={(event) => {
+      event.stopPropagation()
+      void handleOpenSpec(proc.LogSpecFileID || '')
+    }}
+    title={`Log Spec: ${proc.LogSpecFileName || 'attached'} (click to open)`}
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      color: 'var(--primary)',
+      cursor: 'pointer',
+    }}
+  >
+    <Paperclip size={13} />
+  </span>
+)}
+<button
+  onClick={(e) => {
+    e.stopPropagation()
+    openHeaderEditor(proc)
+  }}
+  title="Customize header"
+  aria-label={`Edit header for procurement ${proc.ProcurementRef}`}
+  style={{
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--primary)',
+    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '2px 4px',
+    marginLeft: '6px',
+  }}
+>
+  <Pencil size={13} />
+</button>
+</div>
                         <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
                           {volumeDisplay}
                         </span>
@@ -1459,21 +1612,17 @@ if (window.logPro?.addProcurementNote) {
                           flexWrap: 'wrap',
                         }}
                       >
-                        <span style={{ fontWeight: 700, color: '#0369a1' }}>
-                          {volumeDisplay}
-                        </span>
-                        <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
-                        <span
-                          style={{
-                            maxWidth: '110px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                          title={proc.Species || 'No species'}
-                        >
-                          {proc.Species || '—'}
-                        </span>
+<span
+  style={{
+    maxWidth: '110px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }}
+  title={proc.Species || 'No species'}
+>
+  {proc.Species || '—'}
+</span>
                         {harvestRange && (
                           <>
                             <span aria-hidden="true" style={{ color: '#cbd5e1' }}>•</span>
@@ -2978,6 +3127,121 @@ if (window.logPro?.addProcurementNote) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {editingHeaderProcurement && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(15, 23, 42, 0.48)',
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isSavingHeader) {
+              setEditingHeaderProcurement(null)
+            }
+          }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="procurement-header-title"
+            onSubmit={handleSaveCustomHeader}
+            style={{
+              width: 'min(100%, 440px)',
+              padding: '22px',
+              borderRadius: '8px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.3)',
+            }}
+          >
+            <h3 id="procurement-header-title" style={{ margin: '0 0 6px', color: 'var(--text)' }}>
+              Edit procurement header
+            </h3>
+            <p style={{ margin: '0 0 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              Choose a saved field or use the automatic priority order.
+            </p>
+            <label style={{ display: 'grid', gap: '6px', marginBottom: '14px', fontSize: '0.88rem', fontWeight: 600 }}>
+              Display
+              <select
+                autoFocus
+                value={headerModeDraft}
+                onChange={(event) => setHeaderModeDraft(event.target.value as ProcurementHeaderMode)}
+                disabled={isSavingHeader}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  padding: '10px 12px',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  background: '#ffffff',
+                  font: 'inherit',
+                }}
+              >
+                <option value="auto">Automatic priority</option>
+                {getProcurementHeaderOptions(editingHeaderProcurement).map((option) => (
+                  <option key={option.mode} value={option.mode}>{option.label}</option>
+                ))}
+                <option value="custom">Custom text</option>
+              </select>
+            </label>
+            {headerModeDraft === 'auto' && (
+              <p style={{ margin: '-6px 0 14px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                Contract number, harvest, coupe, block, then plantation.
+              </p>
+            )}
+            {headerModeDraft === 'custom' && (
+              <label style={{ display: 'grid', gap: '6px', fontSize: '0.88rem', fontWeight: 600 }}>
+                Custom header text
+                <input
+                  autoFocus
+                  value={headerDraft}
+                  onChange={(event) => setHeaderDraft(event.target.value)}
+                  disabled={isSavingHeader}
+                  required
+                  placeholder="Enter a custom header"
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '10px 12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    font: 'inherit',
+                  }}
+                />
+              </label>
+            )}
+            {headerEditError && (
+              <p role="alert" style={{ margin: '10px 0 0', color: '#b91c1c', fontSize: '0.88rem' }}>
+                {headerEditError}
+              </p>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setEditingHeaderProcurement(null)}
+                disabled={isSavingHeader}
+                style={{ width: 'auto', padding: '8px 14px' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingHeader}
+                style={{ width: 'auto', padding: '8px 14px' }}
+              >
+                {isSavingHeader ? 'Saving...' : 'Save header'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

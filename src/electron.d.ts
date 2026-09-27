@@ -131,6 +131,32 @@ declare global {
         error: string
       }>
 
+      updateProcurementField: {
+        (
+          workbookPath: string,
+          procurementRef: string,
+          updates: {
+            HeaderDisplayMode: NonNullable<Procurement['HeaderDisplayMode']>
+            CustomHeader?: string
+          },
+        ): Promise<{
+          ok?: boolean
+          error: string
+          procurement?: Procurement
+        }>
+        (
+          workbookPath: string,
+          procurementRef: string,
+          fieldName: 'CustomHeader',
+          fieldValue: string,
+        ): Promise<{
+          ok?: boolean
+          error: string
+          procurement?: Procurement
+        }>
+      }
+
+
       updateProcurement: (
         workbookPath: string,
         procurementRef: string,

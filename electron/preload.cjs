@@ -26,6 +26,16 @@ const api = {
     return ipcRenderer.invoke('supplier:save', workbookPath, supplier)
   },
 
+  updateProcurementField(workbookPath, procurementRef, updates, legacyValue) {
+    return ipcRenderer.invoke(
+      'update-procurement-field',
+      workbookPath,
+      procurementRef,
+      updates,
+      legacyValue,
+    )
+  },
+
   getRates() {
     return ipcRenderer.invoke('rates:get')
   },
@@ -58,10 +68,6 @@ const api = {
   // Full ZIP Backup & Restore
   backupEverything(workbookPath) {
     return ipcRenderer.invoke('backup:everything', workbookPath)
-  },
-
-  restoreBackup(workbookPath) {
-    return ipcRenderer.invoke('backup:restore', workbookPath)
   },
 
   // User-controlled application updates
