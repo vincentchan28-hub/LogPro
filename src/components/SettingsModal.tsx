@@ -29,7 +29,6 @@ import {
   PRODUCT_TYPES,
 } from '../types'
 import { ProductTypeBadge } from './ProductTypeBadge'
-import { productTypeColors } from '../productTypeStyle'
 
 type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook'
 // The name the browser uses to remember the size of the Settings box.
@@ -68,6 +67,39 @@ function saveSize(width: number, height: number) {
   }
 }
 
+// Remembers how wide each column of the Grades table is.
+const GRADE_COLUMN_WIDTHS_KEY = 'logpro.gradesTableColumnWidths'
+
+const DEFAULT_GRADE_COLUMN_WIDTHS = {
+  gradeName: 160,
+  supplier: 160,
+  productType: 120,
+  species: 140,
+  notes: 220,
+}
+
+type GradeColumnWidths = typeof DEFAULT_GRADE_COLUMN_WIDTHS
+
+function readGradeColumnWidths(): GradeColumnWidths {
+  try {
+    const text = window.localStorage.getItem(GRADE_COLUMN_WIDTHS_KEY)
+    if (text) {
+      return { ...DEFAULT_GRADE_COLUMN_WIDTHS, ...JSON.parse(text) }
+    }
+  } catch {
+    // Use defaults if the browser blocks reading.
+  }
+  return { ...DEFAULT_GRADE_COLUMN_WIDTHS }
+}
+
+function saveGradeColumnWidths(widths: GradeColumnWidths) {
+  try {
+    window.localStorage.setItem(GRADE_COLUMN_WIDTHS_KEY, JSON.stringify(widths))
+  } catch {
+    // Ignore storage issues.
+  }
+}
+
 type SettingsModalProps = {
   isOpen: boolean
   onClose: () => void
@@ -98,8 +130,33 @@ export function SettingsModal({
 
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
+  const [gradeColumnWidths, setGradeColumnWidths] = useState<GradeColumnWidths>(() =>
+    readGradeColumnWidths(),
+  )
+
+  function startColumnResize(column: keyof GradeColumnWidths, event: React.MouseEvent) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = gradeColumnWidths[column]
+
+    function onMove(moveEvent: MouseEvent) {
+      const next = Math.max(60, startWidth + (moveEvent.clientX - startX))
+      setGradeColumnWidths((current) => ({ ...current, [column]: next }))
+    }
+
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setGradeColumnWidths((current) => {
+        saveGradeColumnWidths(current)
+        return current
+      })
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
   const [newSpeciesName, setNewSpeciesName] = useState('')
-  const [selectedProductType, setSelectedProductType] = useState<'Green' | 'Burnt'>('Green')
   const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('')
   const [selectedSupplierFilter, setSelectedSupplierFilter] = useState('')
   const [isAddSpeciesOpen, setIsAddSpeciesOpen] = useState(false)
@@ -465,9 +522,18 @@ export function SettingsModal({
     )
   }, [selectedSupplierFilter, suppliers])
 
+  type GroupedGradeRow = {
+    key: string
+    gradeName: string
+    supplierId: string
+    supplierName: string
+    speciesName: string
+    notes: string
+    defs: GradeDefinition[]
+  }
+
   const filteredGrades = useMemo(() => {
     return gradesList.filter((g) => {
-      if (g.ProductType !== selectedProductType) return false
       if (
         selectedSpeciesForGrade &&
         g.SpeciesName &&
@@ -488,7 +554,32 @@ export function SettingsModal({
       }
       return true
     })
-  }, [gradesList, selectedProductType, selectedSpeciesForGrade, selectedSupplierFilter, suppliers])
+  }, [gradesList, selectedSpeciesForGrade, selectedSupplierFilter, suppliers])
+
+  const groupedGrades = useMemo<GroupedGradeRow[]>(() => {
+    const map = new Map<string, GroupedGradeRow>()
+    for (const g of filteredGrades) {
+      const key = `${g.SpeciesName || ''}||${g.SupplierID || ''}||${g.GradeName}`
+      const existing = map.get(key)
+      if (existing) {
+        existing.defs.push(g)
+        if (g.Notes && !existing.notes.includes(g.Notes)) {
+          existing.notes = existing.notes ? `${existing.notes}; ${g.Notes}` : g.Notes
+        }
+      } else {
+        map.set(key, {
+          key,
+          gradeName: g.GradeName,
+          supplierId: String(g.SupplierID || ''),
+          supplierName: g.SupplierName || '',
+          speciesName: g.SpeciesName || '',
+          notes: g.Notes || '',
+          defs: [g],
+        })
+      }
+    }
+    return Array.from(map.values())
+  }, [filteredGrades])
 
   const activeGradeForDetails = useMemo(() => {
     if (selectedGradeForDetails) {
@@ -1320,34 +1411,7 @@ export function SettingsModal({
                       marginBottom: '12px',
                     }}
                   >
-                    <div className="product-type-toggle">
-                      {PRODUCT_TYPES.map((pt) => {
-                        const isActive = selectedProductType === pt
-                        const colors = productTypeColors(pt)
-                        return (
-                          <button
-                            key={pt}
-                            type="button"
-                            className="pt-pill"
-                            onClick={() => {
-                              setSelectedProductType(pt)
-                              setSelectedGradeForDetails(null)
-                            }}
-                            style={
-                              isActive
-                                ? {
-                                    border: colors.border,
-                                    backgroundColor: colors.background,
-                                    color: colors.color,
-                                  }
-                                : undefined
-                            }
-                          >
-                            {pt}
-                          </button>
-                        )
-                      })}
-                    </div>
+  const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('Radiata Pine')
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Trees size={14} className="muted" />
@@ -1607,38 +1671,67 @@ export function SettingsModal({
                     </div>
                   )}
                   <div className="settings-table-wrapper">
-                    <table className="settings-table">
+                    <table className="settings-table" style={{ tableLayout: 'fixed' }}>
+                      <colgroup>
+                        {isDeleteEnabled && <col style={{ width: '36px' }} />}
+                        <col style={{ width: `${gradeColumnWidths.gradeName}px` }} />
+                        <col style={{ width: `${gradeColumnWidths.supplier}px` }} />
+                        <col style={{ width: `${gradeColumnWidths.productType}px` }} />
+                        <col style={{ width: `${gradeColumnWidths.species}px` }} />
+                        <col style={{ width: `${gradeColumnWidths.notes}px` }} />
+                        <col style={{ width: isDeleteEnabled ? '100px' : '65px' }} />
+                      </colgroup>
                       <thead>
                         <tr>
-                          {isDeleteEnabled && <th style={{ width: '36px' }}></th>}
-                          <th>Grade Name</th>
-                          <th>Supplier</th>
-                          <th>Product Type</th>
-                          <th>Species</th>
-                          <th>Standard</th>
-                          <th>Specs / Notes</th>
-                          <th style={{ textAlign: 'center', width: isDeleteEnabled ? '100px' : '65px' }}>Actions</th>
+                          {isDeleteEnabled && <th></th>}
+                          {(
+                            [
+                              ['gradeName', 'Grade Name'],
+                              ['supplier', 'Supplier'],
+                              ['productType', 'Product Type'],
+                              ['species', 'Species'],
+                              ['notes', 'Specs / Notes'],
+                            ] as const
+                          ).map(([key, label]) => (
+                            <th key={key} style={{ position: 'relative' }}>
+                              {label}
+                              <span
+                                onMouseDown={(e) => startColumnResize(key, e)}
+                                style={{
+                                  position: 'absolute',
+                                  right: 0,
+                                  top: 0,
+                                  bottom: 0,
+                                  width: '6px',
+                                  cursor: 'col-resize',
+                                }}
+                              />
+                            </th>
+                          ))}
+                          <th style={{ textAlign: 'center' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredGrades.length === 0 ? (
+                        {groupedGrades.length === 0 ? (
                           <tr>
-                            <td colSpan={isDeleteEnabled ? 8 : 7} className="text-center muted">
+                            <td colSpan={isDeleteEnabled ? 7 : 6} className="text-center muted">
                               No grades found for this filter.
                             </td>
                           </tr>
                         ) : (
-                          filteredGrades.map((g, idx) => {
+                          groupedGrades.map((row) => {
+                            const representative = row.defs[0]
                             const isSelected =
                               activeGradeForDetails &&
-                              String(activeGradeForDetails.GradeDefinitionID) ===
-                                String(g.GradeDefinitionID)
-                            const gradeIdKey = String(g.GradeDefinitionID || idx)
-                            const isCheckedForDelete = selectedGradeIdsForBulkDelete.has(gradeIdKey)
+                              row.defs.some(
+                                (d) =>
+                                  String(d.GradeDefinitionID) ===
+                                  String(activeGradeForDetails.GradeDefinitionID),
+                              )
                             return (
                               <tr
-                                key={gradeIdKey}
-                                onClick={() => setSelectedGradeForDetails(g)}
+                                key={row.key}
+                                onClick={() => setSelectedGradeForDetails(representative)}
                                 style={{
                                   cursor: 'pointer',
                                   background: isSelected ? '#eff6ff' : undefined,
@@ -1649,8 +1742,14 @@ export function SettingsModal({
                                   <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                                     <input
                                       type="checkbox"
-                                      checked={isCheckedForDelete}
-                                      onChange={() => toggleGradeSelectedForDelete(gradeIdKey)}
+                                      checked={row.defs.every((d) =>
+                                        selectedGradeIdsForBulkDelete.has(String(d.GradeDefinitionID)),
+                                      )}
+                                      onChange={() =>
+                                        row.defs.forEach((d) =>
+                                          toggleGradeSelectedForDelete(String(d.GradeDefinitionID)),
+                                        )
+                                      }
                                       style={{ width: '15px', height: '15px', cursor: 'pointer' }}
                                     />
                                   </td>
@@ -1658,30 +1757,39 @@ export function SettingsModal({
                                 <td className="font-semibold">
                                   <span className="cell-flex">
                                     <Tag size={13} className="text-primary" />
-                                    {g.GradeName}
+                                    {row.gradeName}
                                   </span>
                                 </td>
                                 <td>
-                                  {g.SupplierName ? (
+                                  {row.supplierName ? (
                                     <span
                                       className="badge-pill badge-blue"
                                       style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
                                     >
-                                      <Building size={11} /> {g.SupplierName}
+                                      <Building size={11} /> {row.supplierName}
                                     </span>
                                   ) : (
                                     <span className="muted" style={{ fontSize: '0.8rem' }}>Universal</span>
                                   )}
                                 </td>
-                                <td><ProductTypeBadge productType={g.ProductType} /></td>
-                                <td className="muted">{g.SpeciesName || 'All Species'}</td>
                                 <td>
-                                  <span
-                                    className={`badge-pill ${g.IsStandard ? 'badge-blue' : 'badge-amber'}`}
-                                  >
-                                    {g.IsStandard ? 'PDF Standard' : 'Custom'}
-                                  </span>
+                                  <div style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {row.defs.map((d) => (
+                                      <span
+                                        key={String(d.GradeDefinitionID)}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleStartEditGrade(d)
+                                        }}
+                                        title={`Edit ${row.gradeName} (${d.ProductType})`}
+                                        style={{ cursor: 'pointer' }}
+                                      >
+                                        <ProductTypeBadge productType={d.ProductType} />
+                                      </span>
+                                    ))}
+                                  </div>
                                 </td>
+                                <td className="muted">{row.speciesName || 'All Species'}</td>
                                 <td
                                   className="muted"
                                   style={{
@@ -1691,15 +1799,15 @@ export function SettingsModal({
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {g.Notes || '—'}
+                                  {row.notes || '—'}
                                 </td>
                                 <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                                   <div style={{ display: 'inline-flex', gap: '4px' }}>
                                     <button
                                       type="button"
                                       className="secondary-button"
-                                      onClick={() => handleStartEditGrade(g)}
-                                      title={`Edit ${g.GradeName}`}
+                                      onClick={() => handleStartEditGrade(representative)}
+                                      title={`Edit ${row.gradeName}`}
                                       style={{ padding: '3px 7px', fontSize: '0.78rem' }}
                                     >
                                       <Pencil size={12} />
@@ -1708,8 +1816,8 @@ export function SettingsModal({
                                       <button
                                         type="button"
                                         className="secondary-button"
-                                        onClick={() => handleStartDeleteGrade(g)}
-                                        title={`Delete ${g.GradeName}`}
+                                        onClick={() => handleStartDeleteGrade(representative)}
+                                        title={`Delete ${row.gradeName}`}
                                         style={{
                                           padding: '3px 7px',
                                           fontSize: '0.78rem',

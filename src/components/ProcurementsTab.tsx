@@ -28,7 +28,6 @@ import {
   type GradeDefinition,
   AGREEMENT_TYPES,
   PRODUCT_TYPES,
-  STANDARD_GRADES,
 } from '../types'
 import { SettingsModal } from './SettingsModal'
 import { AddContactModal } from './AddContactModal'
@@ -204,7 +203,7 @@ export function ProcurementsTab({
       tempId: getNextRowTempId(),
       Species: 'Radiata Pine',
       ProductType: 'Green',
-      GradeName: 'K Grade',
+      GradeName: '',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
       AgreedTonnes: '',
@@ -354,17 +353,16 @@ export function ProcurementsTab({
   // ---------------- Grade rows ----------------
 
   function handleAddGradeRow() {
-    const defaultProduct = 'Green'
-    const available = getGradesFor(species || speciesList[0]?.SpeciesName, defaultProduct)
+    const lastRow = gradeRows[gradeRows.length - 1]
     const newRow: GradeRowState = {
       tempId: getNextRowTempId(),
-      Species: species || speciesList[0]?.SpeciesName || 'Radiata Pine',
-      ProductType: defaultProduct,
-      GradeName: available[0] || 'K Grade',
+      Species: lastRow?.Species || species || speciesList[0]?.SpeciesName || 'Radiata Pine',
+      ProductType: lastRow?.ProductType || 'Green',
+      GradeName: '',
       OfferedPricePerTonne: '',
       AgreedPricePerTonne: '',
       AgreedTonnes: '',
-      DeliveredTonnes: '0',
+      DeliveredTonnes: '',
     }
     setGradeRows((prev) => [...prev, newRow])
     setIsDirty(true)
@@ -388,11 +386,11 @@ export function ProcurementsTab({
       const updated = [...prev]
       const target = { ...updated[index], [field]: value }
 
-      // If product type changed, adjust default grade if not in list
+      // If product type changed, clear the grade so the user picks again
       if (field === 'ProductType') {
         const available = getGradesFor(target.Species, value)
         if (!available.includes(target.GradeName)) {
-          target.GradeName = available[0] || ''
+          target.GradeName = ''
         }
       }
 
@@ -429,9 +427,7 @@ export function ProcurementsTab({
       })
       .map((g) => g.GradeName)
 
-    // Standard fallback
-    const std = STANDARD_GRADES[pt] || []
-    return Array.from(new Set([...custom, ...std]))
+    return Array.from(new Set(custom))
   }
 
   // Calculate row and overall totals
@@ -546,7 +542,7 @@ export function ProcurementsTab({
         tempId: getNextRowTempId(),
         Species: speciesList[0]?.SpeciesName || 'Radiata Pine',
         ProductType: defaultProduct,
-        GradeName: available[0] || 'K Grade',
+        GradeName: available[0] || '',
         OfferedPricePerTonne: '',
         AgreedPricePerTonne: '',
         AgreedTonnes: '',
@@ -1564,6 +1560,11 @@ if (window.logPro?.addProcurementNote) {
             onClose={handleCloseView}
             onOpenSpec={() => void handleOpenSpec(selectedProcurement.LogSpecFileID || '')}
             workbookPath={workbookPath}
+            timelineNoteText={timelineNoteText}
+            onTimelineNoteChange={setTimelineNoteText}
+            onAddTimelineNote={() => void handleAddTimelineNote()}
+            isSavingNote={isSavingNote}
+            noteAddedMsg={noteAddedMsg}
           />
         )}
 
@@ -2516,6 +2517,7 @@ if (window.logPro?.addProcurementNote) {
                                   fontWeight: 600,
                                 }}
                               >
+                                <option value="">-- Select Grade --</option>
                                 {availableGrades.map((g) => (
                                   <option key={g} value={g}>
                                     {g}
@@ -2832,53 +2834,6 @@ if (window.logPro?.addProcurementNote) {
                   />
                 </div>
 
-                {mode === 'edit' && selectedProcRef && (
-                  <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px dashed var(--border)' }}>
-                    <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
-                      Add a Timeline Note
-                    </label>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
-                      <textarea
-                        rows={2}
-                        placeholder="e.g. Called supplier to confirm harvest delay"
-                        value={timelineNoteText}
-                        onChange={(e) => setTimelineNoteText(e.target.value)}
-                        style={{
-                          flex: 1,
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid var(--border)',
-                          background: '#fff',
-                          fontSize: '0.85rem',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void handleAddTimelineNote()}
-                        disabled={isSavingNote || !timelineNoteText.trim()}
-                        style={{
-                          width: 'auto',
-                          padding: '8px 14px',
-                          fontSize: '0.82rem',
-                          fontWeight: 600,
-                          borderRadius: '6px',
-                          background: '#0284c7',
-                          color: '#ffffff',
-                          border: 'none',
-                          cursor: isSavingNote ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {isSavingNote ? 'Adding...' : 'Add Note'}
-                      </button>
-                    </div>
-                    {noteAddedMsg && (
-                      <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#15803d' }}>{noteAddedMsg}</p>
-                    )}
-                    <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: 'var(--muted)' }}>
-                      Separate from General Notes above — this appears on the Timeline right away.
-                    </p>
-                  </div>
-                )}
               </div>
 
               {/* Bottom Actions Bar - Right Aligned */}

@@ -94,10 +94,16 @@ export function ProcurementTimelineModal({
                     padding: '10px 14px',
                     fontSize: '0.86rem',
                     color: '#1e293b',
-                    whiteSpace: 'pre-line',
+                    whiteSpace: event.type === 'grades_added' ? 'pre' : 'pre-line',
+                    fontFamily:
+                      event.type === 'grades_added'
+                        ? 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+                        : 'inherit',
+                    overflowX: event.type === 'grades_added' ? 'auto' : undefined,
                   }}
+                  {...(event.html ? { dangerouslySetInnerHTML: { __html: event.body } } : {})}
                 >
-                  {event.body}
+                  {event.html ? null : event.body}
                 </div>
               </div>
             ))}

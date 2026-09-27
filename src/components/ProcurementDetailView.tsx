@@ -19,6 +19,11 @@ type ProcurementDetailViewProps = {
   onClose: () => void
   onOpenSpec: () => void
   workbookPath: string
+  timelineNoteText: string
+  onTimelineNoteChange: (text: string) => void
+  onAddTimelineNote: () => void
+  isSavingNote: boolean
+  noteAddedMsg: string
 }
 
 const sectionStyle: CSSProperties = {
@@ -128,6 +133,11 @@ export function ProcurementDetailView({
   onClose,
   onOpenSpec,
   workbookPath,
+  timelineNoteText,
+  onTimelineNoteChange,
+  onAddTimelineNote,
+  isSavingNote,
+  noteAddedMsg,
 }: ProcurementDetailViewProps) {
   const hasSpec = Boolean(procurement.LogSpecFileID)
   const [isTimelineOpen, setIsTimelineOpen] = useState(false)
@@ -446,6 +456,48 @@ export function ProcurementDetailView({
             {procurement.Notes || '—'}
           </div>
         </div>
+      </div>
+
+      {/* 7. Additional Notes (goes straight to the Timeline) */}
+      <div style={sectionStyle}>
+        <h3 style={sectionTitleStyle}>7. Additional Notes</h3>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+          <textarea
+            rows={2}
+            placeholder="e.g. Called supplier to confirm harvest delay"
+            value={timelineNoteText}
+            onChange={(e) => onTimelineNoteChange(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '8px 10px',
+              borderRadius: '6px',
+              border: '1px solid var(--border)',
+              background: '#fff',
+              fontSize: '0.85rem',
+            }}
+          />
+          <button
+            type="button"
+            onClick={onAddTimelineNote}
+            disabled={isSavingNote || !timelineNoteText.trim()}
+            style={{
+              width: 'auto',
+              padding: '8px 14px',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              borderRadius: '6px',
+              background: '#0284c7',
+              color: '#ffffff',
+              border: 'none',
+              cursor: isSavingNote ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {isSavingNote ? 'Adding...' : 'Add Note'}
+          </button>
+        </div>
+        {noteAddedMsg && (
+          <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#15803d' }}>{noteAddedMsg}</p>
+        )}
       </div>
 
       {/* Bottom Action Buttons (Right-aligned) */}

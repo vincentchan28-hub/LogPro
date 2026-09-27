@@ -10,7 +10,6 @@ import {
   type GradeDefinition,
   type WorkbookResult,
   type TimelineEvent,
-  STANDARD_GRADES,
 } from './types'
 import type {
   CostingListResult,
@@ -196,6 +195,81 @@ const workbookCache = new Map<string, XLSX.WorkBook>()
 function formatTimestamp(): string {
   const d = new Date()
   return d.toISOString().replace('T', ' ').substring(0, 19)
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Shortens a name so timeline columns line up: two words become their
+// first two letters each (Radiata Pine -> Ra Pi); one word becomes its
+// first four letters (Green -> Gree).
+function abbreviateWord(text: string): string {
+  const trimmed = String(text || '').trim()
+  if (!trimmed) {
+    return ''
+  }
+  const words = trimmed.split(/\s+/)
+  if (words.length >= 2) {
+    return words.slice(0, 2).map((w) => w.slice(0, 2)).join(' ')
+  }
+  return trimmed.slice(0, 4)
+}
+
+function padColumn(text: string, width: number): string {
+  return text.length >= width ? `${text} ` : text + ' '.repeat(width - text.length)
+}
+
+const TIMELINE_COL_PRODUCT = 5
+const TIMELINE_COL_SPECIES = 6
+const TIMELINE_COL_GRADE = 16
+const TIMELINE_COL_PRICE = 9
+
+// Pads using the REAL text length first, then escapes for HTML.
+// (Escaping first was the bug: "&" becomes "&amp;", which is 5 characters
+// instead of 1, throwing the padding maths off and shifting later columns.)
+function padThenEscape(text: string, width: number): string {
+  return escapeHtml(padColumn(text, width))
+}
+
+function buildGradeTimelineLineHtml(g: ProcurementGrade): string {
+  const productCol = padThenEscape(abbreviateWord(g.ProductType), TIMELINE_COL_PRODUCT)
+  const speciesCol = padThenEscape(abbreviateWord(g.Species), TIMELINE_COL_SPECIES)
+  const gradeCol = padThenEscape(String(g.GradeName || ''), TIMELINE_COL_GRADE)
+
+  const offered = Number(g.OfferedPricePerTonne || 0)
+  const agreed = Number(g.AgreedPricePerTonne || 0)
+  const agreedTonnes = Number(g.AgreedTonnes || 0)
+
+  const offeredText = offered > 0 ? `$${offered.toFixed(2)}` : ''
+  const agreedText = agreed > 0 ? `$${agreed.toFixed(2)}` : ''
+  const tonnesText = agreedTonnes > 0 ? `${agreedTonnes}t` : ''
+
+  const offeredCol = offeredText
+    ? `<span style="color:#dc2626;font-weight:600;">${padThenEscape(offeredText, TIMELINE_COL_PRICE)}</span>`
+    : padThenEscape('', TIMELINE_COL_PRICE)
+  const agreedCol = agreedText
+    ? `<span style="color:#16a34a;font-weight:600;">${padThenEscape(agreedText, TIMELINE_COL_PRICE)}</span>`
+    : padThenEscape('', TIMELINE_COL_PRICE)
+
+  return `${productCol}${speciesCol}${gradeCol}${offeredCol}${agreedCol}${tonnesText}`
+}
+
+// Shortens a header word so it never overruns its column.
+function fitHeaderWord(word: string, width: number): string {
+  return word.length > width ? word.slice(0, width) : word
+}
+
+function buildGradeTimelineHeaderHtml(): string {
+  const productCol = padColumn(fitHeaderWord('Prod', TIMELINE_COL_PRODUCT), TIMELINE_COL_PRODUCT)
+  const speciesCol = padColumn(fitHeaderWord('Speci', TIMELINE_COL_SPECIES), TIMELINE_COL_SPECIES)
+  const gradeCol = padColumn(fitHeaderWord('Grade', TIMELINE_COL_GRADE), TIMELINE_COL_GRADE)
+  const offeredCol = padColumn(fitHeaderWord('Offered', TIMELINE_COL_PRICE), TIMELINE_COL_PRICE)
+  const agreedCol = padColumn(fitHeaderWord('Agreed', TIMELINE_COL_PRICE), TIMELINE_COL_PRICE)
+  const tonnesCol = 'Tonnes'
+  return `<strong>${escapeHtml(
+    `${productCol}${speciesCol}${gradeCol}${offeredCol}${agreedCol}${tonnesCol}`,
+  )}</strong>`
 }
 
 function ensureSheetWithHeaders(
@@ -1197,6 +1271,12 @@ export const webLogPro = {
         ActivityLog: '',
       }
 
+      if (newProcurement.Notes) {
+        newProcurement.ActivityLog = JSON.stringify([
+          { date: now, text: newProcurement.Notes, kind: 'general' },
+        ])
+      }
+
       procurements.push(newProcurement)
       setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
 
@@ -1312,6 +1392,21 @@ export const webLogPro = {
           (data as any).ForceWeeklyForecast !== undefined
             ? Boolean((data as any).ForceWeeklyForecast)
             : existing.ForceWeeklyForecast,
+      }
+
+      const previousGeneralNotes = String(existing.Notes || '').trim()
+      const nextGeneralNotes = String(updatedProcurement.Notes || '').trim()
+      if (nextGeneralNotes && nextGeneralNotes !== previousGeneralNotes) {
+        let activityLog: { date: string; text: string; kind?: string }[] = []
+        try {
+          activityLog = updatedProcurement.ActivityLog
+            ? JSON.parse(updatedProcurement.ActivityLog as string)
+            : []
+        } catch {
+          activityLog = []
+        }
+        activityLog.push({ date: now, text: nextGeneralNotes, kind: 'general' })
+        updatedProcurement.ActivityLog = JSON.stringify(activityLog)
       }
 
       procurements[targetIndex] = updatedProcurement
@@ -1489,22 +1584,15 @@ export const webLogPro = {
     let gradeGroupIndex = 0
     for (const [createdAt, rows] of gradeGroups.entries()) {
       gradeGroupIndex += 1
-      const lines = rows
-        .map(
-          (g) =>
-            `${g.GradeName} (${g.ProductType}): offered $${Number(g.OfferedPricePerTonne || 0).toFixed(
-              2,
-            )}/t, agreed $${Number(g.AgreedPricePerTonne || 0).toFixed(2)}/t, ${Number(
-              g.AgreedTonnes || 0,
-            )} t agreed`,
-        )
-        .join('\n')
+      const header = buildGradeTimelineHeaderHtml()
+      const lines = rows.map((g) => buildGradeTimelineLineHtml(g)).join('<br/>')
       events.push({
         id: `grades-${gradeGroupIndex}`,
         date: createdAt,
         type: 'grades_added',
         title: rows.length > 1 ? 'Grades added' : 'Grade added',
-        body: lines,
+        body: `${header}<br/>${lines}`,
+        html: true,
       })
     }
 
@@ -1522,7 +1610,7 @@ export const webLogPro = {
     })
 
     try {
-      const log: { date: string; text: string }[] = procurement.ActivityLog
+      const log: { date: string; text: string; kind?: string }[] = procurement.ActivityLog
         ? JSON.parse(procurement.ActivityLog)
         : []
       log.forEach((entry, idx) => {
@@ -1530,7 +1618,7 @@ export const webLogPro = {
           id: `note-${idx}`,
           date: entry.date,
           type: 'note',
-          title: 'Note added',
+          title: entry.kind === 'general' ? 'General notes' : 'Note added',
           body: entry.text,
         })
       })
@@ -1681,23 +1769,6 @@ export const webLogPro = {
 
     species.push(newSpecies)
     setRows(workbook, 'SpeciesDefinitions', HEADERS.SpeciesDefinitions, species as any)
-
-    // Also populate standard grades for this species
-    const grades = readGradeDefinitions(workbook)
-    let nextGradeId = grades.reduce((max, g) => Math.max(max, Number(g.GradeDefinitionID) || 0), 0) + 1
-    for (const [prodType, gradeList] of Object.entries(STANDARD_GRADES)) {
-      for (const grade of gradeList) {
-        grades.push({
-          GradeDefinitionID: nextGradeId++,
-          SpeciesName: clean,
-          ProductType: prodType as 'Green' | 'Burnt Logs',
-          GradeName: grade,
-          IsStandard: true,
-          Notes: 'Standard grade from Log Procurement reference PDF',
-        })
-      }
-    }
-    setRows(workbook, 'GradeDefinitions', HEADERS.GradeDefinitions, grades as any)
     saveWorkbookToStorage(workbookPath, workbook)
 
     return { species, error: '' }
@@ -2155,15 +2226,16 @@ export const webLogPro = {
 export function initWebLogPro(): void {
   const existingLogPro = (window as any).logProDesktop
 
-
   try {
-    if (window.localStorage.getItem(LAST_WORKBOOK_KEY) === null) {
+    const lastWorkbook = window.localStorage.getItem(LAST_WORKBOOK_KEY)
+    if (existingLogPro && lastWorkbook === 'log_procurement.xlsx') {
+      window.localStorage.removeItem(LAST_WORKBOOK_KEY)
+    } else if (!existingLogPro && lastWorkbook === null) {
       window.localStorage.setItem(LAST_WORKBOOK_KEY, 'log_procurement.xlsx')
     }
   } catch {
     // Ignore storage errors
   }
-
 
   // Merge webLogPro methods so that all features (species, grades, procurements, etc.)
   // are fully available in both Electron desktop and browser environments
@@ -2172,14 +2244,12 @@ export function initWebLogPro(): void {
     ...(existingLogPro || {}),
   }
 
-
   // Explicitly ensure all workbook functions from webLogPro are bound
   for (const [key, value] of Object.entries(webLogPro)) {
     if (typeof value === 'function') {
       merged[key] = (value as Function).bind(webLogPro)
     }
   }
-
 
   // Preserve desktop native rate fetching if available
   if (existingLogPro && typeof existingLogPro.getRates === 'function') {

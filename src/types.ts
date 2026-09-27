@@ -126,6 +126,7 @@ export type TimelineEvent = {
   type: 'created' | 'grades_added' | 'price_change' | 'note'
   title: string
   body: string
+  html?: boolean
 }
 
 export const AGREEMENT_TYPES = [
