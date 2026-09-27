@@ -131,7 +131,7 @@ function App() {
   const [supplierError, setSupplierError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<LogProUpdateStatus | null>(null)
-  const [isUpdateNoticeDismissed, setIsUpdateNoticeDismissed] = useState(false)
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
 
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -180,9 +180,6 @@ function App() {
 
     return desktop.onUpdateStatus((status) => {
       setUpdateStatus(status)
-      if (status.state !== 'checking') {
-        setIsUpdateNoticeDismissed(false)
-      }
     })
   }, [])
 
@@ -190,7 +187,6 @@ function App() {
     const desktop = window.logProDesktop
     if (!desktop) return
 
-    setIsUpdateNoticeDismissed(false)
     setUpdateStatus({ state: 'checking' })
     try {
       const result = await desktop.checkForUpdates()
@@ -229,9 +225,14 @@ function App() {
   }
 
 
-  function renderUpdateNotice() {
-    if (!window.logProDesktop || !updateStatus || isUpdateNoticeDismissed) return null
-    if (!['available', 'downloading', 'downloaded'].includes(updateStatus.state)) return null
+  function hasPendingUpdate() {
+    if (!window.logProDesktop || !updateStatus) return false
+    return ['available', 'downloading', 'downloaded', 'error'].includes(updateStatus.state)
+  }
+
+  function renderUpdateModal() {
+    if (!isUpdateModalOpen || !window.logProDesktop || !updateStatus) return null
+    if (!hasPendingUpdate()) return null
 
     const updateVersion = 'version' in updateStatus ? updateStatus.version : ''
     const title = {
@@ -244,7 +245,13 @@ function App() {
     }[updateStatus.state]
 
     return (
-      <aside className="update-notice" role="status" aria-live="polite">
+      <div className="modal-backdrop" onClick={() => setIsUpdateModalOpen(false)}>
+      <aside
+        className="update-notice"
+        role="status"
+        aria-live="polite"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="update-notice-copy">
           <strong>{title}</strong>
           {updateStatus.state === 'available' && <p>Version {updateVersion} is available to download.</p>}
@@ -277,14 +284,15 @@ function App() {
             <button
               type="button"
               className="update-later-button"
-              onClick={() => setIsUpdateNoticeDismissed(true)}
-              aria-label="Later"
+              onClick={() => setIsUpdateModalOpen(false)}
+              aria-label="Close"
             >
-              <X size={15} /> Later
+              <X size={15} /> Close
             </button>
           )}
         </div>
       </aside>
+      </div>
     )
   }
 
@@ -778,38 +786,46 @@ if (selectedWorkbook) {
       <p>Timber & Log Procurement Management System</p>
     </div>
   </div>
-<div
+<button
+  type="button"
+  onClick={() => {
+    if (hasPendingUpdate()) {
+      setIsUpdateModalOpen(true)
+    }
+  }}
+  title={hasPendingUpdate() ? 'Click to view update details' : `LogPro v${__APP_VERSION__}`}
   style={{
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '6px',
-    padding: '2px 10px',
+    gap: '4px',
+    padding: '1px 5px',
     background: '#fef3c7',
     border: '1px solid #fcd34d',
     borderRadius: '9999px',
-    fontSize: '0.72rem',
+    fontSize: '7px',
+    lineHeight: 1.4,
     fontWeight: 600,
     color: '#92400e',
     whiteSpace: 'nowrap',
     alignSelf: 'flex-end',
     marginBottom: '4px',
+    cursor: hasPendingUpdate() ? 'pointer' : 'default',
+    font: 'inherit',
   }}
 >
-    <span>v0.2.8</span>
-    {window.logProDesktop &&
-      updateStatus &&
-      updateStatus.state === 'available' && (
-        <span
-          style={{
-            fontSize: '0.68rem',
-            fontWeight: 700,
-            color: '#b45309',
-          }}
-        >
-          • Update available
-        </span>
-      )}
-  </div>
+    <span style={{ fontSize: '7px' }}>v{__APP_VERSION__}</span>
+    {hasPendingUpdate() && (
+      <span
+        style={{
+          fontSize: '7px',
+          fontWeight: 700,
+          color: '#b45309',
+        }}
+      >
+        • Update available
+      </span>
+    )}
+  </button>
 </header>
 
           <nav className="main-navigation">
@@ -838,8 +854,8 @@ if (selectedWorkbook) {
           </nav>
         </div>
 
-        {renderUpdateNotice()}
         {renderPage()}
+        {renderUpdateModal()}
 
         {/* Unified Settings Modal */}
         <SettingsModal
@@ -1150,7 +1166,7 @@ if (selectedWorkbook) {
           Use the Download .xlsx button anytime to save files to your local drive.
         </p>
       </section>
-      {renderUpdateNotice()}
+      {renderUpdateModal()}
     </main>
   )
 }
