@@ -1281,14 +1281,15 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 12px 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--border, #d1d5db);
+  width: min(100%, 420px);
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid #cbd5e1;
   border-left: 4px solid #16835d;
-  border-radius: 6px;
-  background: var(--surface, #fff);
+  border-radius: 10px;
+  background: #ffffff;
   color: var(--text, #17201d);
-  box-shadow: 0 4px 14px rgb(15 23 42 / 8%);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
 }
 
 .update-notice-copy {

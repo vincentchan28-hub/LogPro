@@ -798,11 +798,11 @@ if (selectedWorkbook) {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
-    padding: '1px 5px',
+    padding: '1px 6px',
     background: '#fef3c7',
     border: '1px solid #fcd34d',
     borderRadius: '9999px',
-    fontSize: '7px',
+    fontSize: '9px',
     lineHeight: 1.4,
     fontWeight: 600,
     color: '#92400e',
@@ -813,11 +813,11 @@ if (selectedWorkbook) {
     font: 'inherit',
   }}
 >
-    <span style={{ fontSize: '7px' }}>v{__APP_VERSION__}</span>
+    <span style={{ fontSize: '9px' }}>v{__APP_VERSION__}</span>
     {hasPendingUpdate() && (
       <span
         style={{
-          fontSize: '7px',
+          fontSize: '9px',
           fontWeight: 700,
           color: '#b45309',
         }}
