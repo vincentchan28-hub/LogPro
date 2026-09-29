@@ -62,6 +62,8 @@ export type Procurement = {
   StartDate: string
   EndDate: string
   WeeklyEstimatedTonnes?: number | string
+  AgreedTonnesMode?: 'per-grade' | 'total'
+  TotalAgreedTonnes?: number | string
   Status: 'Draft' | 'Waiting for Acceptance' | 'Accepted' | 'Active' | 'Completed' | 'Cancelled' | string
   AcceptanceDate: string
   AcceptanceTime: string

@@ -8,7 +8,7 @@ import {
   Mail,
   Edit2,
   Trash2,
-  FileSpreadsheet,
+  MoreVertical,
   Filter,
   Sparkles,
   AlertTriangle,
@@ -27,7 +27,6 @@ export function ContactsTab({
   workbookPath,
   suppliers,
   onRefresh,
-  onNavigateToProcurement,
 }: ContactsTabProps) {
   const [contacts, setContacts] = useState<SupplierContact[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -43,6 +42,7 @@ export function ContactsTab({
   const [contactToDelete, setContactToDelete] = useState<SupplierContact | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [openActionMenuContactId, setOpenActionMenuContactId] = useState<string | null>(null)
 
   // Load contacts
   const loadContacts = useCallback(() => {
@@ -473,7 +473,7 @@ export function ContactsTab({
                 <th style={{ textAlign: 'left', padding: '12px 14px', width: '170px' }}>Phone / Mobile</th>
                 <th style={{ textAlign: 'left', padding: '12px 14px', width: '190px' }}>Email</th>
                 <th style={{ textAlign: 'left', padding: '12px 14px' }}>Notes</th>
-                <th style={{ textAlign: 'right', padding: '12px 14px', width: '190px' }}>Actions</th>
+                <th style={{ textAlign: 'right', padding: '12px 14px', width: '100px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -488,6 +488,8 @@ export function ContactsTab({
                   .slice(0, 2)
                   .join('')
                   .toUpperCase()
+                const actionMenuId = String(c.ContactID)
+                const isActionMenuOpen = openActionMenuContactId === actionMenuId
 
                 return (
                   <tr
@@ -650,32 +652,17 @@ export function ContactsTab({
 
                     {/* Actions */}
                     <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {/* Start Procurement Action */}
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => {
-                            const sId = String(c.SupplierID).trim()
-                            const cId = String(c.ContactID).trim()
-                            onNavigateToProcurement(sId, cId)
-                          }}
-                          title={`Create procurement with ${c.ContactName}`}
-                          style={{
-                            padding: '4px 8px',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            color: 'var(--primary-dark)',
-                            borderColor: 'var(--border)',
-                          }}
-                        >
-                          <FileSpreadsheet size={13} />
-                          <span>Procure</span>
-                        </button>
-
+                      <div
+                        className="contacts-row-actions"
+                        onBlur={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                            setOpenActionMenuContactId(null)
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setOpenActionMenuContactId(null)
+                        }}
+                      >
                         {/* Edit Button */}
                         <button
                           type="button"
@@ -692,26 +679,34 @@ export function ContactsTab({
                           <Edit2 size={13} />
                         </button>
 
-                        {/* Delete Button */}
                         <button
                           type="button"
-                          className="secondary-button"
-                          onClick={() => {
-                            setDeleteError('')
-                            setContactToDelete(c)
-                          }}
-                          title={`Delete ${c.ContactName}`}
-                          style={{
-                            padding: '4px 7px',
-                            fontSize: '0.78rem',
-                            color: '#dc2626',
-                            borderColor: 'transparent',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                          }}
+                          className="contacts-row-menu-trigger"
+                          onClick={() => setOpenActionMenuContactId(isActionMenuOpen ? null : actionMenuId)}
+                          title={`More actions for ${c.ContactName}`}
+                          aria-label={`More actions for ${c.ContactName}`}
+                          aria-haspopup="menu"
+                          aria-expanded={isActionMenuOpen}
                         >
-                          <Trash2 size={13} />
+                          <MoreVertical size={16} aria-hidden="true" />
                         </button>
+                        {isActionMenuOpen && (
+                          <div className="contacts-row-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="contacts-row-menu-delete"
+                              onClick={() => {
+                                setOpenActionMenuContactId(null)
+                                setDeleteError('')
+                                setContactToDelete(c)
+                              }}
+                            >
+                              <Trash2 size={14} aria-hidden="true" />
+                              Delete contact
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>

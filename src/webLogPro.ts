@@ -84,6 +84,8 @@ export const HEADERS: Record<string, string[]> = {
     'StartDate',
     'EndDate',
     'WeeklyEstimatedTonnes',
+    'AgreedTonnesMode',
+    'TotalAgreedTonnes',
     'Status',
     'AcceptanceDate',
     'AcceptanceTime',
@@ -390,6 +392,11 @@ export function readProcurements(workbook: XLSX.WorkBook): Procurement[] {
       WeeklyEstimatedTonnes:
         row.WeeklyEstimatedTonnes !== undefined && row.WeeklyEstimatedTonnes !== ''
           ? Number(row.WeeklyEstimatedTonnes) || String(row.WeeklyEstimatedTonnes)
+          : '',
+      AgreedTonnesMode: row.AgreedTonnesMode === 'total' ? 'total' : 'per-grade',
+      TotalAgreedTonnes:
+        row.TotalAgreedTonnes !== undefined && row.TotalAgreedTonnes !== ''
+          ? Number(row.TotalAgreedTonnes) || 0
           : '',
       Status: String(row.Status || 'Draft'),
       AcceptanceDate: String(row.AcceptanceDate || ''),
@@ -1273,6 +1280,11 @@ export const webLogPro = {
           data.WeeklyEstimatedTonnes !== undefined && data.WeeklyEstimatedTonnes !== ''
             ? Number(data.WeeklyEstimatedTonnes) || 0
             : '',
+        AgreedTonnesMode: data.AgreedTonnesMode === 'total' ? 'total' : 'per-grade',
+        TotalAgreedTonnes:
+          data.AgreedTonnesMode === 'total'
+            ? Number(data.TotalAgreedTonnes) || 0
+            : '',
         Status: data.Status || 'Draft',
         AcceptanceDate: String(data.AcceptanceDate || '').trim(),
         AcceptanceTime: String(data.AcceptanceTime || '').trim(),
@@ -1405,6 +1417,16 @@ export const webLogPro = {
           data.WeeklyEstimatedTonnes !== undefined
             ? (data.WeeklyEstimatedTonnes !== '' ? Number(data.WeeklyEstimatedTonnes) || 0 : '')
             : (existing.WeeklyEstimatedTonnes ?? ''),
+        AgreedTonnesMode:
+          data.AgreedTonnesMode !== undefined
+            ? data.AgreedTonnesMode
+            : (existing.AgreedTonnesMode || 'per-grade'),
+        TotalAgreedTonnes:
+          data.AgreedTonnesMode === 'total'
+            ? Number(data.TotalAgreedTonnes) || 0
+            : data.AgreedTonnesMode === 'per-grade'
+            ? ''
+            : (existing.TotalAgreedTonnes ?? ''),
         Status: data.Status || existing.Status,
         AcceptanceDate: data.AcceptanceDate !== undefined ? String(data.AcceptanceDate) : existing.AcceptanceDate,
         AcceptanceTime: data.AcceptanceTime !== undefined ? String(data.AcceptanceTime) : existing.AcceptanceTime,

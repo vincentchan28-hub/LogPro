@@ -41,6 +41,12 @@ import {
   removeSpec,
 } from '../specStorage'
 import {
+  getProcurementHeaderDisplay,
+  getProcurementHeaderOptions,
+} from '../utils/procurementHeader'
+import { isGradeCancelled, isProcurementAgreed } from '../utils/procurementStatus'
+import { productTypeColors } from '../productTypeStyle'
+import {
   checkAttachmentFile,
   saveAttachment,
   openAttachmentInNewWindow,
@@ -63,6 +69,82 @@ type SpecFields = {
   LogSpecFileType: string
 }
 
+type ProcurementTimeIndicator = {
+  source: 'Harvest dates' | 'Agreement dates'
+  label: string
+  percentUsed: number | null
+}
+
+function parseLedgerDate(value: string | undefined): Date | null {
+  const text = String(value || '').trim()
+  if (!text) return null
+
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  const auMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
+  const parsed = isoMatch
+    ? new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    : auMatch
+    ? new Date(Number(auMatch[3]), Number(auMatch[2]) - 1, Number(auMatch[1]))
+    : new Date(text)
+
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate())
+}
+
+function getProcurementTimeIndicator(
+  procurement: Procurement,
+  currentDate = new Date(),
+): ProcurementTimeIndicator | null {
+  const usesHarvestDates = Boolean(procurement.HarvestPeriodStart)
+  const source = usesHarvestDates ? 'Harvest dates' : 'Agreement dates'
+  const start = parseLedgerDate(usesHarvestDates ? procurement.HarvestPeriodStart : procurement.StartDate)
+  const end = parseLedgerDate(usesHarvestDates ? procurement.HarvestPeriodEnd : procurement.EndDate)
+  if (!start && !end) return null
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const today = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())
+  const daysBetween = (from: Date, to: Date) => Math.round((to.getTime() - from.getTime()) / dayMs)
+  const pluralDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`
+
+  if (start && end && end < start) return null
+  if (start && today < start) {
+    return { source, label: `Starts in ${pluralDays(daysBetween(today, start))}`, percentUsed: 0 }
+  }
+
+  if (start && end) {
+    const duration = daysBetween(start, end) + 1
+    if (today > end) {
+      return {
+        source,
+        label: `${duration} days used · Ended ${pluralDays(daysBetween(end, today))} ago`,
+        percentUsed: 100,
+      }
+    }
+
+    const elapsedDays = Math.min(duration, daysBetween(start, today) + 1)
+    const daysRemaining = daysBetween(today, end)
+    const percentUsed = Math.round((elapsedDays / duration) * 100)
+    return {
+      source,
+      label: daysRemaining === 0
+        ? `Ends today · ${percentUsed}% used`
+        : `${pluralDays(daysRemaining)} remaining · ${percentUsed}% used`,
+      percentUsed,
+    }
+  }
+
+  if (start) {
+    return { source, label: `${pluralDays(daysBetween(start, today) + 1)} used`, percentUsed: null }
+  }
+
+  const daysRemaining = daysBetween(today, end!)
+  return {
+    source,
+    label: daysRemaining > 0 ? `${pluralDays(daysRemaining)} remaining` : 'Ends today',
+    percentUsed: null,
+  }
+}
+
 type GradeRowState = {
   tempId: string
   ProcurementGradeID?: number | string
@@ -80,15 +162,6 @@ let rowCounter = 0
 function getNextRowTempId(): string {
   rowCounter += 1
   return `row-${rowCounter}`
-}
-
-function isGradeCancelled(price: string | number | undefined): boolean {
-  if (price === undefined || price === null || price === '') return false
-  if (typeof price === 'string') {
-    const lower = price.trim().toLowerCase()
-    return lower === 'cancelled' || lower === 'cancel' || lower === 'c'
-  }
-  return false
 }
 
 function isOfferedTBA(price: string | number | undefined): boolean {
@@ -109,6 +182,7 @@ const DEFAULT_PROC_EDIT_GRADE_WIDTHS = {
   grade: 150,
   offered: 110,
   agreed: 120,
+  agreedTonnes: 125,
 }
 type ProcEditGradeWidths = typeof DEFAULT_PROC_EDIT_GRADE_WIDTHS
 
@@ -129,93 +203,6 @@ function saveProcEditGradeWidths(widths: ProcEditGradeWidths) {
     window.localStorage.setItem(PROC_EDIT_GRADE_WIDTHS_KEY, JSON.stringify(widths))
   } catch {
     // Ignore storage issues.
-  }
-}
-
-function isProcurementAgreed(
-  grades: { OfferedPricePerTonne?: string | number; AgreedPricePerTonne?: string | number }[],
-): boolean {
-  if (!grades || grades.length === 0) return false
-  for (const g of grades) {
-    // 1. Offered column can be 0 or empty; it does not need a mandatory value to agree
-    // 2. Agreed column: all grades must have a value (> 0) or be marked 'Cancelled'
-    if (isGradeCancelled(g.AgreedPricePerTonne)) {
-      continue
-    }
-    const agreedNum = Number(g.AgreedPricePerTonne)
-    if (isNaN(agreedNum) || agreedNum <= 0) {
-      return false
-    }
-  }
-  return true
-}
-
-type ProcurementHeaderSource = Exclude<ProcurementHeaderMode, 'auto' | 'custom'>
-
-type ProcurementHeaderOption = {
-  mode: ProcurementHeaderSource
-  label: string
-  text: string
-}
-
-function getProcurementHeaderOptions(procurement: Procurement): ProcurementHeaderOption[] {
-  const agreementType = String(procurement.AgreementType || '').trim().toLowerCase()
-  const agreementDetail = String(procurement.AgreementDetail || '').trim()
-  const harvestRange = procurement.HarvestPeriodStart
-    ? `${procurement.HarvestPeriodStart}${procurement.HarvestPeriodEnd ? ` – ${procurement.HarvestPeriodEnd}` : ''}`
-    : procurement.StartDate
-    ? `${procurement.StartDate}${procurement.EndDate ? ` – ${procurement.EndDate}` : ''}`
-    : ''
-
-  const options: ProcurementHeaderOption[] = [
-    {
-      mode: 'contract-number',
-      label: 'Contract Number Details',
-      text:
-        String(procurement.ContractNumber || '').trim() ||
-        (agreementType === 'contract number' ? agreementDetail : ''),
-    },
-    {
-      mode: 'harvest',
-      label: 'Harvest Details',
-      text: (agreementType === 'harvest' ? agreementDetail : '') || harvestRange,
-    },
-    {
-      mode: 'coupe',
-      label: 'Coupe Details',
-      text: agreementType === 'coupe' ? agreementDetail : '',
-    },
-    {
-      mode: 'block',
-      label: 'Block Details',
-      text: agreementType === 'block' ? agreementDetail : '',
-    },
-    {
-      mode: 'plantation',
-      label: 'Plantation Name',
-      text: String(procurement.Plantation || '').trim(),
-    },
-  ]
-
-  return options.filter((option) => option.text !== '')
-}
-
-function getProcurementHeaderDisplay(procurement: Procurement) {
-  const options = getProcurementHeaderOptions(procurement)
-  const defaultText = options[0]?.text || ''
-  const mode =
-    procurement.HeaderDisplayMode ||
-    (String(procurement.CustomHeader || '').trim() ? 'custom' : 'auto')
-  const selectedText =
-    mode === 'custom'
-      ? String(procurement.CustomHeader || '').trim()
-      : mode === 'auto'
-      ? ''
-      : options.find((option) => option.mode === mode)?.text || ''
-
-  return {
-    text: selectedText || defaultText || procurement.ProcurementRef,
-    isProcurementRef: !selectedText && !defaultText,
   }
 }
 
@@ -408,6 +395,8 @@ export function ProcurementsTab({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [weeklyEstimatedTonnes, setWeeklyEstimatedTonnes] = useState<string>('')
+  const [agreedTonnesMode, setAgreedTonnesMode] = useState<'per-grade' | 'total'>('per-grade')
+  const [totalAgreedTonnes, setTotalAgreedTonnes] = useState('')
   const [forceWeeklyForecast, setForceWeeklyForecast] = useState(false)
   const [acceptanceDate, setAcceptanceDate] = useState('')
   const [acceptanceTime, setAcceptanceTime] = useState('')
@@ -719,6 +708,8 @@ export function ProcurementsTab({
     setStartDate('')
     setEndDate('')
     setWeeklyEstimatedTonnes('')
+    setAgreedTonnesMode('per-grade')
+    setTotalAgreedTonnes('')
     setForceWeeklyForecast(false)
     setAcceptanceDate('')
     setAcceptanceTime('')
@@ -778,6 +769,12 @@ export function ProcurementsTab({
     setWeeklyEstimatedTonnes(
       proc.WeeklyEstimatedTonnes !== undefined && proc.WeeklyEstimatedTonnes !== ''
         ? String(proc.WeeklyEstimatedTonnes)
+        : '',
+    )
+    setAgreedTonnesMode(proc.AgreedTonnesMode === 'total' ? 'total' : 'per-grade')
+    setTotalAgreedTonnes(
+      proc.TotalAgreedTonnes !== undefined && proc.TotalAgreedTonnes !== ''
+        ? String(proc.TotalAgreedTonnes)
         : '',
     )
     setForceWeeklyForecast(Boolean(proc.ForceWeeklyForecast))
@@ -894,6 +891,11 @@ export function ProcurementsTab({
       throw new Error('Please select a supplier.')
     }
 
+    const totalTonnage = Number(totalAgreedTonnes) || 0
+    if (agreedTonnesMode === 'total' && totalTonnage < 0) {
+      throw new Error('Total agreed tonnes cannot be negative.')
+    }
+
     const validatedGrades: Partial<ProcurementGrade>[] = []
     for (const [idx, row] of gradeRows.entries()) {
       const rowNum = idx + 1
@@ -902,11 +904,11 @@ export function ProcurementsTab({
         : (Number(row.OfferedPricePerTonne) || 0)
       const isCancelled = isGradeCancelled(row.AgreedPricePerTonne)
       const agreedPrice = isCancelled ? 'Cancelled' : (Number(row.AgreedPricePerTonne) || 0)
-      const agreedTonnes = Number(row.AgreedTonnes) || 0
+      const agreedTonnes = agreedTonnesMode === 'total' ? 0 : Number(row.AgreedTonnes) || 0
       const deliveredTonnes = Number(row.DeliveredTonnes) || 0
       const gradeLabel = row.GradeName ? ` (${row.GradeName})` : ''
 
-      if (agreedTonnes < 0) {
+      if (agreedTonnesMode === 'per-grade' && agreedTonnes < 0) {
         throw new Error(`Row ${rowNum}${gradeLabel}: Agreed tonnes cannot be negative.`)
       }
       if (deliveredTonnes < 0) {
@@ -959,6 +961,8 @@ async function handleSaveNew(e?: FormEvent) {
         EndDate: finalAgreementEnd,
         WeeklyEstimatedTonnes:
           weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
+        AgreedTonnesMode: agreedTonnesMode,
+        TotalAgreedTonnes: agreedTonnesMode === 'total' ? Number(totalAgreedTonnes) || 0 : '',
         Status: isProcurementAgreed(gradeRows) ? 'Active' : 'Draft',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
@@ -1081,6 +1085,8 @@ if (window.logPro?.addProcurementNote) {
         EndDate: finalAgreementEnd,
         WeeklyEstimatedTonnes:
           weeklyEstimatedTonnes.trim() !== '' ? Number(weeklyEstimatedTonnes) || 0 : '',
+        AgreedTonnesMode: agreedTonnesMode,
+        TotalAgreedTonnes: agreedTonnesMode === 'total' ? Number(totalAgreedTonnes) || 0 : '',
         Status: isProcurementAgreed(gradeRows) ? 'Active' : 'Draft',
         AcceptanceDate: acceptanceDate.trim(),
         AcceptanceTime: acceptanceTime.trim(),
@@ -1607,6 +1613,7 @@ if (window.logPro?.addProcurementNote) {
                         ? `${tonnes.agreed.toLocaleString(undefined, { maximumFractionDigits: 1 })} t`
                         : '0 t'
                     const headerDisplay = getProcurementHeaderDisplay(proc)
+                    const timeIndicator = getProcurementTimeIndicator(proc)
 
                     return (
                       <div
@@ -1705,7 +1712,7 @@ if (window.logPro?.addProcurementNote) {
                           >
                             {suppName}
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                             <span
                               style={{
                                 fontSize: '0.68rem',
@@ -1779,6 +1786,28 @@ if (window.logPro?.addProcurementNote) {
                             </>
                           )}
                         </div>
+                        {timeIndicator && (
+                          <div
+                            className="procurement-ledger-time-indicator"
+                            title={`${timeIndicator.source}: ${harvestRange || 'date range'}`}
+                          >
+                            <div className="procurement-ledger-time-copy">
+                              <span>{timeIndicator.source}</span>
+                              <strong>{timeIndicator.label}</strong>
+                            </div>
+                            {timeIndicator.percentUsed !== null && (
+                              <div className="procurement-ledger-time-track" aria-hidden="true">
+                                <div
+                                  className="procurement-ledger-time-progress"
+                                  style={{
+                                    width: `${timeIndicator.percentUsed}%`,
+                                    backgroundColor: `hsl(${205 - 205 * (timeIndicator.percentUsed / 100)}, 78%, 45%)`,
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   }
@@ -2087,8 +2116,6 @@ if (window.logPro?.addProcurementNote) {
 
               {/* Section 1: Supplier & Agreement Info */}
               {(() => {
-                const hasHarvestDates = Boolean(harvestPeriodStart.trim() || harvestPeriodEnd.trim())
-
                 return (
                   <div
                     style={{
@@ -2327,106 +2354,6 @@ if (window.logPro?.addProcurementNote) {
                       </div>
                     </div>
 
-                    {/* Agreement Dates (Start / End) */}
-                    <div
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        padding: '12px 14px',
-                        marginBottom: '12px',
-                      }}
-                    >
-                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
-                        Agreement Date Range (Option A)
-                      </div>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                          gap: '12px',
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
-                              Agreement Start Date
-                            </label>
-                            {startDate && (
-                              <button
-                                type="button"
-                                onClick={() => setStartDate('')}
-                                style={{
-                                  fontSize: '0.72rem',
-                                  color: '#dc2626',
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                }}
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="date"
-                            value={startDate}
-                            disabled={hasHarvestDates}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border)',
-                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
-                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
-                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
-                              Agreement End Date
-                            </label>
-                            {endDate && (
-                              <button
-                                type="button"
-                                onClick={() => setEndDate('')}
-                                style={{
-                                  fontSize: '0.72rem',
-                                  color: '#dc2626',
-                                  background: 'none',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                }}
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="date"
-                            value={endDate}
-                            disabled={hasHarvestDates}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '8px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid var(--border)',
-                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
-                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
-                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Current Supplier Info strip */}
                     {currentSupplier && (
                       <div
@@ -2518,6 +2445,7 @@ if (window.logPro?.addProcurementNote) {
               {/* Section 2: Plantation Name and Harvest Period */}
               {(() => {
                 const hasAgreementDates = Boolean(startDate.trim() || endDate.trim())
+                const hasHarvestDates = Boolean(harvestPeriodStart.trim() || harvestPeriodEnd.trim())
 
                 return (
                   <div
@@ -2585,6 +2513,91 @@ if (window.logPro?.addProcurementNote) {
                             </option>
                           ))}
                         </select>
+                      </div>
+                    </div>
+
+                    {/* Agreement Dates (Option A) */}
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '12px 14px',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                        Agreement Date Range (Option A)
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                          gap: '12px',
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
+                              Agreement Start Date
+                            </label>
+                            {startDate && (
+                              <button
+                                type="button"
+                                onClick={() => setStartDate('')}
+                                style={{ fontSize: '0.72rem', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={startDate}
+                            disabled={hasHarvestDates}
+                            onChange={(event) => setStartDate(event.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
+                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
+                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <label style={{ fontWeight: 600, fontSize: '0.82rem', color: hasHarvestDates ? '#94a3b8' : 'inherit' }}>
+                              Agreement End Date
+                            </label>
+                            {endDate && (
+                              <button
+                                type="button"
+                                onClick={() => setEndDate('')}
+                                style={{ fontSize: '0.72rem', color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="date"
+                            value={endDate}
+                            disabled={hasHarvestDates}
+                            onChange={(event) => setEndDate(event.target.value)}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              border: '1px solid var(--border)',
+                              background: hasHarvestDates ? '#f1f5f9' : '#fff',
+                              cursor: hasHarvestDates ? 'not-allowed' : 'auto',
+                              color: hasHarvestDates ? '#94a3b8' : 'inherit',
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -2866,41 +2879,50 @@ if (window.logPro?.addProcurementNote) {
                   </div>
                 </div>
 
-                {/* Workflow Explanation Info Box */}
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '10px',
-                    alignItems: 'flex-start',
-                    padding: '12px 14px',
-                    background: '#f0f9ff',
-                    border: '1px solid #bae6fd',
-                    borderRadius: '8px',
-                    marginBottom: '14px',
-                    fontSize: '0.82rem',
-                    color: '#0369a1',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  <Info size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#0284c7' }} />
-                  <div>
-                    <strong style={{ color: '#0c4a6e', display: 'block', marginBottom: '3px' }}>
-                      Agreement Status &amp; Ledger Rules:
-                    </strong>
-                    <div>
-                      • <strong>Offered Column:</strong> Optional starting point (can be 0 or empty; does not require a value to agree). All values appear in <span style={{ color: '#dc2626', fontWeight: 700 }}>red</span>.
-                    </div>
-                    <div>
-                      • <strong>Agreed (Confirmed):</strong> As long as each grade has an agreed value (in <span style={{ color: '#16a34a', fontWeight: 700 }}>green</span>) or is marked <span style={{ color: '#dc2626', fontWeight: 700 }}>Cancelled</span>, the procurement is considered <em>Agreed</em> and placed at the top of the Agreements Ledger.
-                    </div>
-                    <div>
-                      • <strong>In Negotiation (Draft):</strong> When any grade is still 0 (in black) or has a pending unentered price. These remain under <em>In Negotiation</em>.
-                    </div>
-                    <div>
-                      • <strong>Quick Cancel Shortcut:</strong> Type <kbd style={{ background: '#ffffff', border: '1px solid #93c5fd', borderRadius: '3px', padding: '1px 5px', fontWeight: 700, color: '#0369a1' }}>c</kbd> in any Agreed $/t field to mark a grade as <span style={{ color: '#dc2626', fontWeight: 700 }}>Cancelled</span> (red text).
-                    </div>
+                <div className="agreed-tonnes-mode-control">
+                  <span>Agreed tonnes</span>
+                  <div role="group" aria-label="Agreed tonnes mode" className="agreed-tonnes-mode-options">
+                    <button
+                      type="button"
+                      className={agreedTonnesMode === 'per-grade' ? 'is-selected' : ''}
+                      aria-pressed={agreedTonnesMode === 'per-grade'}
+                      onClick={() => {
+                        setAgreedTonnesMode('per-grade')
+                        setIsDirty(true)
+                      }}
+                    >
+                      Per grade
+                    </button>
+                    <button
+                      type="button"
+                      className={agreedTonnesMode === 'total' ? 'is-selected' : ''}
+                      aria-pressed={agreedTonnesMode === 'total'}
+                      onClick={() => {
+                        setAgreedTonnesMode('total')
+                        setIsDirty(true)
+                      }}
+                    >
+                      Whole procurement
+                    </button>
                   </div>
                 </div>
+
+                {agreedTonnesMode === 'total' && (
+                  <div className="total-agreed-tonnes-field">
+                    <label htmlFor="total-agreed-tonnes">Total agreed tonnes</label>
+                    <input
+                      id="total-agreed-tonnes"
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={totalAgreedTonnes}
+                      onChange={(event) => {
+                        setTotalAgreedTonnes(event.target.value)
+                        setIsDirty(true)
+                      }}
+                    />
+                  </div>
+                )}
 
                 <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>
                   Add one row for each grade/product combination. Standard grades come from the reference PDF.
@@ -2915,6 +2937,9 @@ if (window.logPro?.addProcurementNote) {
                       <col style={{ width: `${gradeColumnWidths.grade}px` }} />
                       <col style={{ width: `${gradeColumnWidths.offered}px` }} />
                       <col style={{ width: `${gradeColumnWidths.agreed}px` }} />
+                      {agreedTonnesMode === 'per-grade' && (
+                        <col style={{ width: `${gradeColumnWidths.agreedTonnes}px` }} />
+                      )}
                       <col style={{ width: '45px' }} />
                     </colgroup>
                     <thead>
@@ -2939,6 +2964,12 @@ if (window.logPro?.addProcurementNote) {
                           Agreed $/t *
                           <span onMouseDown={(e) => startGradeColumnResize('agreed', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
                         </th>
+                        {agreedTonnesMode === 'per-grade' && (
+                          <th style={{ padding: '8px 10px', textAlign: 'center', position: 'relative' }}>
+                            Agreed Tonnes
+                            <span onMouseDown={(e) => startGradeColumnResize('agreedTonnes', e)} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize' }} />
+                          </th>
+                        )}
                         <th style={{ padding: '8px 10px', textAlign: 'center' }}></th>
                       </tr>
                     </thead>
@@ -2981,12 +3012,16 @@ if (window.logPro?.addProcurementNote) {
                                     e.target.value as 'Green' | 'Burnt',
                                   )
                                 }
+                                className={`product-type-select product-type-select--${row.ProductType.toLowerCase()}`}
                                 style={{
                                   width: '100%',
                                   padding: '6px 8px',
                                   borderRadius: '4px',
-                                  border: '1px solid #cbd5e1',
+                                  border: productTypeColors(row.ProductType).border,
+                                  background: productTypeColors(row.ProductType).background,
+                                  color: productTypeColors(row.ProductType).color,
                                   fontSize: '0.85rem',
+                                  fontWeight: 700,
                                 }}
                               >
                                 {PRODUCT_TYPES.map((pt) => (
@@ -3178,6 +3213,27 @@ if (window.logPro?.addProcurementNote) {
                               })()}
                             </td>
 
+                            {agreedTonnesMode === 'per-grade' && (
+                              <td style={{ padding: '6px 8px' }}>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={row.AgreedTonnes}
+                                  onChange={(event) => handleGradeRowChange(idx, 'AgreedTonnes', event.target.value)}
+                                  aria-label={`Agreed tonnes for ${row.GradeName || `grade row ${idx + 1}`}`}
+                                  style={{
+                                    width: '100%',
+                                    padding: '6px 8px',
+                                    borderRadius: '4px',
+                                    border: '1px solid #cbd5e1',
+                                    fontSize: '0.85rem',
+                                    textAlign: 'center',
+                                  }}
+                                />
+                              </td>
+                            )}
+
                             <td style={{ padding: '6px 4px', textAlign: 'center' }}>
                               <button
                                 type="button"
@@ -3201,7 +3257,7 @@ if (window.logPro?.addProcurementNote) {
                     </tbody>
                     <tfoot>
                       <tr style={{ background: '#f8fafc', fontWeight: 600, color: 'var(--muted)', fontSize: '0.82rem' }}>
-                        <td colSpan={6} style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        <td colSpan={agreedTonnesMode === 'per-grade' ? 7 : 6} style={{ padding: '8px 12px', textAlign: 'right' }}>
                           {gradeRows.length} {gradeRows.length === 1 ? 'grade configured' : 'grades configured'}
                         </td>
                       </tr>

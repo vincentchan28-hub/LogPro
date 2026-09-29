@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import {
   FileSpreadsheet,
   Scale,
-  TrendingUp,
   ArrowRight,
   Truck,
 } from 'lucide-react'
@@ -134,25 +133,18 @@ export function HomeOverview({
   // Overall Contract Stats (without status requirement)
   const stats = useMemo(() => {
     let totalAgreed = 0
-    let totalDelivered = 0
-    let totalRemaining = 0
 
     for (const p of procurements) {
       const grades = window.logPro.getProcurementGrades(workbookPath, p.ProcurementRef)
       for (const g of grades) {
         const agreed = Number(g.AgreedTonnes) || 0
-        const delivered = Number(g.DeliveredTonnes) || 0
         totalAgreed += agreed
-        totalDelivered += delivered
-        totalRemaining += Math.max(0, agreed - delivered)
       }
     }
 
     return {
       procurementsCount: procurements.length,
       totalAgreed,
-      totalDelivered,
-      totalRemaining,
     }
   }, [procurements, workbookPath])
 
@@ -216,24 +208,6 @@ export function HomeOverview({
         }
       }
 
-      // Progress calculation: tracking date range and how much has been used up
-      let progressPercent = 0
-      let progressLabel = ''
-
-      if (now.getTime() >= wRange.end.getTime()) {
-        progressPercent = 100
-        progressLabel = '100% elapsed (7 of 7 days)'
-      } else if (now.getTime() < wRange.start.getTime()) {
-        progressPercent = 0
-        progressLabel = '0% elapsed (Upcoming week)'
-      } else {
-        const elapsedMs = now.getTime() - wRange.start.getTime()
-        const totalMs = wRange.end.getTime() - wRange.start.getTime()
-        progressPercent = Math.min(100, Math.max(0, Math.round((elapsedMs / totalMs) * 100)))
-        const dayNum = Math.min(7, Math.max(1, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)) + 1))
-        progressLabel = `${progressPercent}% used (Day ${dayNum} of 7)`
-      }
-
       weeks.push({
         index: i,
         label: `+${i} Week${i > 1 ? 's' : ''}`,
@@ -242,8 +216,6 @@ export function HomeOverview({
         supplierCount: activeSupps.size,
         targetDate,
         startStr: wRange.startStr,
-        progressPercent,
-        progressLabel,
       })
     }
     return weeks
@@ -371,9 +343,12 @@ export function HomeOverview({
           </div>
         </div>
 
-        {/* Card 4: Delivered vs Remaining */}
+        {/* Card 4: Reserved for a future dashboard metric */}
         <div
           style={{
+            display: 'grid',
+            placeItems: 'center',
+            minHeight: '130px',
             background: 'var(--card-bg)',
             border: '1px solid var(--border)',
             borderRadius: '12px',
@@ -381,23 +356,7 @@ export function HomeOverview({
             boxShadow: '0 4px 12px rgba(2, 132, 199, 0.05)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--muted)' }}>
-              Delivered vs Remaining
-            </span>
-            <TrendingUp size={20} color="#16a34a" />
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#16a34a' }}>
-            {stats.totalDelivered.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
-            <span style={{ fontSize: '0.95rem', fontWeight: 400, color: '#64748b' }}>
-              / {stats.totalRemaining.toLocaleString(undefined, { maximumFractionDigits: 0 })} t left
-            </span>
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: '0.8rem', marginTop: '6px' }}>
-            {stats.totalAgreed > 0
-              ? `${Math.round((stats.totalDelivered / stats.totalAgreed) * 100)}% delivered to date`
-              : 'No agreed volume recorded'}
-          </div>
+          <span style={{ color: 'var(--muted)', fontSize: '0.9rem', fontWeight: 600 }}>Empty</span>
         </div>
       </div>
 
@@ -561,34 +520,6 @@ export function HomeOverview({
                     </div>
                   </div>
 
-                  {/* Progress bar tracking date range elapsed */}
-                  <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: '#64748b', marginBottom: '4px' }}>
-                      <span>Date elapsed</span>
-                      <span style={{ fontWeight: 600, color: w.progressPercent === 100 ? '#059669' : '#334155' }}>
-                        {w.progressLabel}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        height: '6px',
-                        width: '100%',
-                        borderRadius: '3px',
-                        background: '#e2e8f0',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: `${w.progressPercent}%`,
-                          background: w.progressPercent === 100 ? '#10b981' : isSelected ? 'var(--primary)' : '#0284c7',
-                          borderRadius: '3px',
-                          transition: 'width 0.3s ease',
-                        }}
-                      />
-                    </div>
-                  </div>
                 </div>
               )
             })}

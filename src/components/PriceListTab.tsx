@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Save, Pencil, X } from 'lucide-react'
+import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type {
   Procurement,
   ProcurementGrade,
   Supplier,
 } from '../types'
+import { getProcurementHeaderDisplay } from '../utils/procurementHeader'
+import { isProcurementAgreed } from '../utils/procurementStatus'
 import { ProductTypeBadge } from './ProductTypeBadge'
 
 type PriceListTabProps = {
@@ -14,33 +16,108 @@ type PriceListTabProps = {
   onRefresh: () => void
 }
 
-// A short name that identifies one grade row.
-function getGradeKey(grade: ProcurementGrade): string {
-  return String(
-    grade.ProcurementGradeID ||
-      `${grade.ProcurementRef}-${grade.ProductType}-${grade.GradeName}`,
-  )
+type PriceListColumnKey = 'species' | 'grade' | 'product' | 'agreed' | 'compare' | 'difference'
+type PriceListColumnWidths = Record<PriceListColumnKey, number>
+type ProductTypeFilter = 'All' | 'Green' | 'Burnt'
+type PriceListComparisonRow = {
+  key: string
+  species: string
+  gradeName: string
+  productType: string
+  selectedGrade?: ProcurementGrade
+  comparisonGrade?: ProcurementGrade
 }
 
-// The resale price that is saved for a grade, as text. Empty text means "no price yet".
-function savedPriceText(grade: ProcurementGrade): string {
-  const price = Number(grade.ResalePrice) || 0
-  return price > 0 ? String(price) : ''
+const PRICE_LIST_COLUMN_WIDTHS_KEY = 'logpro.priceListColumnWidths'
+const DEFAULT_PRICE_LIST_COLUMN_WIDTHS: PriceListColumnWidths = {
+  species: 130,
+  grade: 140,
+  product: 120,
+  agreed: 190,
+  compare: 190,
+  difference: 130,
+}
+
+const EMPTY_PROCUREMENT_GRADES: ProcurementGrade[] = []
+
+function normalizeSpecies(species: string): string {
+  return species.trim().toLocaleLowerCase()
+}
+
+function getProcurementSpecies(
+  procurement: Procurement | null,
+  grades: ProcurementGrade[],
+): string[] {
+  const speciesByKey = new Map<string, string>()
+  ;[procurement?.Species || '', ...grades.map((grade) => grade.Species || '')].forEach((species) => {
+    const trimmedSpecies = species.trim()
+    const key = normalizeSpecies(trimmedSpecies)
+    if (key && !speciesByKey.has(key)) speciesByKey.set(key, trimmedSpecies)
+  })
+  return Array.from(speciesByKey.values())
+}
+
+function getAgreementIdentifier(procurement: Procurement): string {
+  const contractNumber = String(procurement.ContractNumber || '').trim()
+  if (contractNumber) return contractNumber
+
+  const agreementType = String(procurement.AgreementType || '').trim().toLowerCase()
+  const agreementDetail = String(procurement.AgreementDetail || '').trim()
+  if (agreementType === 'coupe' && agreementDetail) return `Coupe ${agreementDetail}`
+  if (agreementType === 'contract number' && agreementDetail) return agreementDetail
+  return getProcurementHeaderDisplay(procurement).text || 'Not entered'
+}
+
+function getComparisonGradeKey(grade: ProcurementGrade, fallbackSpecies: string): string {
+  return JSON.stringify([
+    String(grade.Species || fallbackSpecies || '').trim(),
+    String(grade.GradeName || '').trim(),
+    String(grade.ProductType || '').trim(),
+  ])
+}
+
+function getComparablePurchasePrice(grade?: ProcurementGrade): number | null {
+  if (!grade || String(grade.AgreedPricePerTonne).trim().toLowerCase().startsWith('c')) {
+    return null
+  }
+  const price = Number(grade.AgreedPricePerTonne)
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
+function displayPurchasePrice(grade?: ProcurementGrade): string {
+  if (!grade) return '—'
+  if (String(grade.AgreedPricePerTonne).trim().toLowerCase().startsWith('c')) {
+    return 'Cancelled'
+  }
+  return `AUD $${Number(grade.AgreedPricePerTonne || 0).toFixed(2)}`
+}
+
+function readPriceListColumnWidths(): PriceListColumnWidths {
+  try {
+    const saved = localStorage.getItem(PRICE_LIST_COLUMN_WIDTHS_KEY)
+    if (saved) {
+      return {
+        ...DEFAULT_PRICE_LIST_COLUMN_WIDTHS,
+        ...JSON.parse(saved),
+      }
+    }
+  } catch {
+    // Ignore unavailable or invalid saved widths.
+  }
+  return { ...DEFAULT_PRICE_LIST_COLUMN_WIDTHS }
 }
 
 export function PriceListTab({
   workbookPath,
   procurements,
   suppliers,
-  onRefresh,
 }: PriceListTabProps) {
   const [selectedProcurementRef, setSelectedProcurementRef] = useState('')
-  const [selectedGrades, setSelectedGrades] = useState<ProcurementGrade[]>([])
-  const [resalePrices, setResalePrices] = useState<Record<string, string>>({})
-  const [editingKeys, setEditingKeys] = useState<Record<string, boolean>>({})
-  const [savingKey, setSavingKey] = useState('')
-  const [message, setMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+  const [compareProcurementRef, setCompareProcurementRef] = useState('')
+  const [columnWidths, setColumnWidths] = useState(readPriceListColumnWidths)
+  const [activeResizingColumn, setActiveResizingColumn] = useState<PriceListColumnKey | null>(null)
+  const [productTypeFilter, setProductTypeFilter] = useState<ProductTypeFilter>('All')
+  const [isProcurementListCollapsed, setIsProcurementListCollapsed] = useState(false)
 
   const selectedProcurement = useMemo(
     () =>
@@ -63,257 +140,306 @@ export function PriceListTab({
     [suppliers, selectedProcurement],
   )
 
-  useEffect(() => {
-    if (!selectedProcurementRef) {
-      setSelectedGrades([])
-      setResalePrices({})
-      setEditingKeys({})
-      return
-    }
+  const comparisonProcurement = useMemo(
+    () => procurements.find((procurement) => procurement.ProcurementRef === compareProcurementRef) ?? null,
+    [compareProcurementRef, procurements],
+  )
+  const comparisonSupplier = useMemo(
+    () => suppliers.find(
+      (supplier) =>
+        String(supplier.SupplierID) === String(comparisonProcurement?.SupplierID) ||
+        String(supplier.SupplierReference) === String(comparisonProcurement?.SupplierID),
+    ) ?? null,
+    [comparisonProcurement, suppliers],
+  )
 
-    try {
-      const procurementGrades = window.logPro.getProcurementGrades(
-        workbookPath,
-        selectedProcurementRef,
+  const procurementGradesByRef = useMemo(() => {
+    const gradesByRef: Record<string, ProcurementGrade[]> = {}
+    procurements.forEach((procurement) => {
+      try {
+        gradesByRef[procurement.ProcurementRef] = window.logPro.getProcurementGrades(
+          workbookPath,
+          procurement.ProcurementRef,
+        )
+      } catch {
+        gradesByRef[procurement.ProcurementRef] = []
+      }
+    })
+    return gradesByRef
+  }, [procurements, workbookPath])
+
+  const selectedGrades = procurementGradesByRef[selectedProcurementRef] || EMPTY_PROCUREMENT_GRADES
+  const comparisonGrades = procurementGradesByRef[compareProcurementRef] || EMPTY_PROCUREMENT_GRADES
+  const selectedSpecies = useMemo(
+    () => getProcurementSpecies(selectedProcurement, selectedGrades),
+    [selectedGrades, selectedProcurement],
+  )
+  const selectedSpeciesKeys = useMemo(
+    () => new Set(selectedSpecies.map(normalizeSpecies)),
+    [selectedSpecies],
+  )
+  const procurementSpeciesByRef = useMemo(
+    () => Object.fromEntries(
+      procurements.map((procurement) => [
+        procurement.ProcurementRef,
+        getProcurementSpecies(
+          procurement,
+          procurementGradesByRef[procurement.ProcurementRef] || EMPTY_PROCUREMENT_GRADES,
+        ),
+      ]),
+    ),
+    [procurements, procurementGradesByRef],
+  )
+  const comparableProcurements = useMemo(
+    () => procurements.filter((procurement) =>
+      procurement.ProcurementRef !== selectedProcurementRef &&
+      (procurementSpeciesByRef[procurement.ProcurementRef] || []).some((species) =>
+        selectedSpeciesKeys.has(normalizeSpecies(species)),
+      ),
+    ),
+    [procurements, procurementSpeciesByRef, selectedProcurementRef, selectedSpeciesKeys],
+  )
+  const sharedSpeciesKeys = useMemo(
+    () => new Set(
+      (procurementSpeciesByRef[compareProcurementRef] || [])
+        .map(normalizeSpecies)
+        .filter((species) => selectedSpeciesKeys.has(species)),
+    ),
+    [compareProcurementRef, procurementSpeciesByRef, selectedSpeciesKeys],
+  )
+  const sharedSpecies = selectedSpecies.filter((species) =>
+    sharedSpeciesKeys.has(normalizeSpecies(species)),
+  )
+
+  const gradeGroups = useMemo(() => {
+    const comparisonGradesByKey = new Map<string, ProcurementGrade>()
+    comparisonGrades
+      .filter((grade) =>
+        (productTypeFilter === 'All' || grade.ProductType === productTypeFilter) &&
+        (!compareProcurementRef || sharedSpeciesKeys.has(normalizeSpecies(grade.Species || comparisonProcurement?.Species || ''))),
       )
-
-      setSelectedGrades(procurementGrades)
-
-      const priceValues: Record<string, string> = {}
-      procurementGrades.forEach((grade) => {
-        priceValues[getGradeKey(grade)] = savedPriceText(grade)
+      .forEach((grade) => {
+        comparisonGradesByKey.set(
+          getComparisonGradeKey(grade, comparisonProcurement?.Species || ''),
+          grade,
+        )
       })
 
-      setResalePrices(priceValues)
-      setEditingKeys({})
-      setMessage('')
-      setErrorMessage('')
-    } catch (error) {
-      setSelectedGrades([])
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Could not load the procurement grades.',
+    const rowsByKey = new Map<string, PriceListComparisonRow>()
+    selectedGrades
+      .filter((grade) =>
+        (productTypeFilter === 'All' || grade.ProductType === productTypeFilter) &&
+        (!compareProcurementRef || sharedSpeciesKeys.has(normalizeSpecies(grade.Species || selectedProcurement?.Species || ''))),
       )
-    }
-  }, [workbookPath, selectedProcurementRef])
+      .forEach((grade) => {
+        const species = String(grade.Species || selectedProcurement?.Species || '').trim()
+        const key = getComparisonGradeKey(grade, selectedProcurement?.Species || '')
+        rowsByKey.set(key, {
+          key,
+          species,
+          gradeName: grade.GradeName,
+          productType: grade.ProductType,
+          selectedGrade: grade,
+          comparisonGrade: comparisonGradesByKey.get(key),
+        })
+      })
 
-  function updateResalePrice(grade: ProcurementGrade, value: string) {
-    setResalePrices((current) => ({
-      ...current,
-      [getGradeKey(grade)]: value,
-    }))
-    setMessage('')
-    setErrorMessage('')
-  }
-
-  // Unlocks a saved price so it can be changed.
-  function startEditing(grade: ProcurementGrade) {
-    setEditingKeys((current) => ({
-      ...current,
-      [getGradeKey(grade)]: true,
-    }))
-    setMessage('')
-    setErrorMessage('')
-  }
-
-  // Puts the saved price back and locks the box again.
-  function cancelEditing(grade: ProcurementGrade) {
-    const key = getGradeKey(grade)
-    setResalePrices((current) => ({
-      ...current,
-      [key]: savedPriceText(grade),
-    }))
-    setEditingKeys((current) => ({
-      ...current,
-      [key]: false,
-    }))
-    setMessage('')
-    setErrorMessage('')
-  }
-
-  // Saves the resale price for ONE grade row only.
-  async function handleSaveRow(grade: ProcurementGrade) {
-    if (!selectedProcurement) {
-      setErrorMessage('Please select a procurement first.')
-      return
-    }
-
-    const key = getGradeKey(grade)
-    const typedText = (resalePrices[key] ?? '').trim()
-    const newPrice = typedText === '' ? 0 : Number(typedText)
-
-    if (Number.isNaN(newPrice) || newPrice < 0) {
-      setErrorMessage('Please enter a valid price (0 or more).')
-      return
-    }
-
-    setSavingKey(key)
-    setMessage('')
-    setErrorMessage('')
-
-    try {
-      // Only this row changes. Every other row keeps its saved price.
-      const updatedGrades = selectedGrades.map((item) =>
-        getGradeKey(item) === key ? { ...item, ResalePrice: newPrice } : item,
+    comparisonGrades
+      .filter((grade) =>
+        (productTypeFilter === 'All' || grade.ProductType === productTypeFilter) &&
+        (!compareProcurementRef || sharedSpeciesKeys.has(normalizeSpecies(grade.Species || comparisonProcurement?.Species || ''))),
       )
+      .forEach((grade) => {
+        const species = String(grade.Species || comparisonProcurement?.Species || '').trim()
+        const key = getComparisonGradeKey(grade, comparisonProcurement?.Species || '')
+        if (!rowsByKey.has(key)) {
+          rowsByKey.set(key, {
+            key,
+            species,
+            gradeName: grade.GradeName,
+            productType: grade.ProductType,
+            comparisonGrade: grade,
+          })
+        }
+      })
 
-      const result = await window.logPro.updateProcurement(
-        workbookPath,
-        selectedProcurement.ProcurementRef,
-        {},
-        updatedGrades,
+    const groups = new Map<string, PriceListComparisonRow[]>()
+    rowsByKey.forEach((row) => {
+      const groupKey = JSON.stringify([row.species, row.gradeName])
+      groups.set(groupKey, [...(groups.get(groupKey) ?? []), row])
+    })
+
+    return Array.from(groups, ([key, rows]) => ({
+      key,
+      rows: [...rows].sort((left, right) => {
+        const productOrder = (productType: string) =>
+          productType === 'Green' ? 0 : productType === 'Burnt' ? 1 : 2
+        return productOrder(left.productType) - productOrder(right.productType)
+      }),
+    }))
+  }, [compareProcurementRef, comparisonGrades, comparisonProcurement, productTypeFilter, selectedGrades, selectedProcurement, sharedSpeciesKeys])
+
+  const tableColumns: { key: PriceListColumnKey; label: string; supplier?: string; source?: 'purchase' | 'compare' }[] = [
+    { key: 'species', label: 'Species' },
+    { key: 'grade', label: 'Grade' },
+    { key: 'product', label: 'Product' },
+    {
+      key: 'agreed',
+      label: 'Purchase',
+      ...(compareProcurementRef
+        ? { supplier: selectedSupplier?.SupplierName || selectedProcurement?.ProcurementRef || 'Selected', source: 'purchase' as const }
+        : {}),
+    },
+    ...(compareProcurementRef
+      ? [
+          {
+            key: 'compare' as const,
+            label: 'Compare',
+            supplier: comparisonSupplier?.SupplierName || comparisonProcurement?.ProcurementRef || 'Comparison',
+            source: 'compare' as const,
+          },
+          { key: 'difference' as const, label: 'Difference' },
+        ]
+      : []),
+  ]
+
+  const procurementAgreedByRef = useMemo(() => {
+    const agreementStatuses: Record<string, boolean> = {}
+    procurements.forEach((procurement) => {
+      agreementStatuses[procurement.ProcurementRef] = isProcurementAgreed(
+        procurementGradesByRef[procurement.ProcurementRef] || EMPTY_PROCUREMENT_GRADES,
       )
+    })
+    return agreementStatuses
+  }, [procurements, procurementGradesByRef])
 
-      if (result.error) {
-        setErrorMessage(result.error)
-        return
+  function startColumnResize(column: PriceListColumnKey, event: ReactMouseEvent<HTMLSpanElement>) {
+    event.preventDefault()
+    event.stopPropagation()
+    setActiveResizingColumn(column)
+
+    const startX = event.clientX
+    const initialWidth = columnWidths[column]
+    const getNextWidth = (clientX: number) =>
+      Math.max(80, Math.min(600, initialWidth + clientX - startX))
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const nextWidth = getNextWidth(moveEvent.clientX)
+      setColumnWidths((current) => ({ ...current, [column]: nextWidth }))
+    }
+
+    const onMouseUp = (upEvent: MouseEvent) => {
+      const nextWidths = { ...columnWidths, [column]: getNextWidth(upEvent.clientX) }
+      setColumnWidths(nextWidths)
+      setActiveResizingColumn(null)
+      try {
+        localStorage.setItem(PRICE_LIST_COLUMN_WIDTHS_KEY, JSON.stringify(nextWidths))
+      } catch {
+        // Keep the new widths for this session if storage is unavailable.
       }
-
-      const freshGrades = window.logPro.getProcurementGrades(
-        workbookPath,
-        selectedProcurement.ProcurementRef,
-      )
-      setSelectedGrades(freshGrades)
-
-      setResalePrices((current) => ({
-        ...current,
-        [key]: newPrice > 0 ? String(newPrice) : '',
-      }))
-      setEditingKeys((current) => ({
-        ...current,
-        [key]: false,
-      }))
-
-      setMessage(
-        newPrice > 0
-          ? `Resale price saved for ${grade.GradeName}.`
-          : `Resale price cleared for ${grade.GradeName}.`,
-      )
-      onRefresh()
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Could not save the resale price.',
-      )
-    } finally {
-      setSavingKey('')
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
     }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
   }
 
-  function formatDate(value: string): string {
-    if (!value) return 'Not entered'
+  function selectProcurement(procurement: Procurement) {
+    setSelectedProcurementRef(procurement.ProcurementRef)
+    if (!compareProcurementRef) return
 
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
+    const selectedSpeciesKeys = new Set(
+      (procurementSpeciesByRef[procurement.ProcurementRef] || []).map(normalizeSpecies),
+    )
+    const comparisonStillMatches = (procurementSpeciesByRef[compareProcurementRef] || []).some(
+      (species) => selectedSpeciesKeys.has(normalizeSpecies(species)),
+    )
 
-    return date.toLocaleDateString('en-AU')
+    if (compareProcurementRef === procurement.ProcurementRef || !comparisonStillMatches) {
+      setCompareProcurementRef('')
+    }
   }
 
   return (
-    <section className="page-content" style={{ maxWidth: '1200px' }}>
+    <section className="page-content price-list-page">
       <div className="page-heading">
         <div>
           <h2>Price List</h2>
-          <p>
-            View agreed purchase prices and enter the resale price for each
-            procurement grade. Each resale price is saved on its own.
-          </p>
+          <p>Compare agreed purchase prices by species, grade, and product.</p>
         </div>
       </div>
 
-      <section className="form-card" style={{ marginTop: '20px' }}>
-        <label htmlFor="price-list-procurement">
-          Select Procurement
-          <select
-            id="price-list-procurement"
-            value={selectedProcurementRef}
-            onChange={(event) =>
-              setSelectedProcurementRef(event.target.value)
-            }
-          >
-            <option value="">Select a procurement</option>
-            {procurements.map((procurement) => (
-              <option
-                key={procurement.ProcurementRef}
-                value={procurement.ProcurementRef}
-              >
-                {procurement.ProcurementRef} — {procurement.AgreementDetail}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <div className={`price-list-layout${isProcurementListCollapsed ? ' is-sidebar-collapsed' : ''}`}>
+        <aside className="price-list-sidebar" aria-label="Procurement list">
+          <h3>Procurements</h3>
+          {procurements.length === 0 ? (
+            <p className="price-list-sidebar-empty">No procurements available.</p>
+          ) : (
+            <div className="price-list-procurement-list">
+              {procurements.map((procurement) => {
+                const title = getProcurementHeaderDisplay(procurement).text
+                const supplierName = suppliers.find(
+                  (supplier) =>
+                    String(supplier.SupplierID) === String(procurement.SupplierID) ||
+                    String(supplier.SupplierReference) === String(procurement.SupplierID),
+                )?.SupplierName
+                const isSelected = procurement.ProcurementRef === selectedProcurementRef
+                const isNegotiating = procurementAgreedByRef[procurement.ProcurementRef] === false
 
-      {selectedProcurement && (
-        <>
-          <section
-            className="table-card"
-            style={{
-              marginTop: '20px',
-              padding: '12px 20px',
-              background: '#f0f9ff',
-              border: '1px solid #e0f2fe',
-            }}
-          >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'max-content minmax(0, 1fr) max-content minmax(0, 1fr) max-content minmax(0, 1fr)',
-                columnGap: '12px',
-                rowGap: '8px',
-                alignItems: 'baseline',
-                fontSize: '0.92rem',
-              }}
-            >
-              {[
-                ['Supplier', selectedSupplier?.SupplierName || 'Not available'],
-                ['Plantation', selectedProcurement.Plantation || 'Not entered'],
-                [
-                  'Harvest Start',
-                  formatDate(selectedProcurement.HarvestPeriodStart),
-                ],
-                [
-                  'Agreement',
-                  `${selectedProcurement.AgreementType} ${selectedProcurement.AgreementDetail}`.trim() ||
-                    'Not entered',
-                ],
-                ['Species', selectedProcurement.Species || 'Not entered'],
-                [
-                  'Harvest Ends',
-                  formatDate(selectedProcurement.HarvestPeriodEnd),
-                ],
-              ].map(([label, value], index) => (
-                <div key={label} style={{ display: 'contents' }}>
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      color: '#000000',
-                      whiteSpace: 'nowrap',
-                      paddingLeft: index % 3 === 0 ? 0 : '40px',
-                    }}
+                return (
+                  <button
+                    key={procurement.ProcurementRef}
+                    type="button"
+                    className={`price-list-procurement-button${isNegotiating ? ' is-negotiating' : ''}${isSelected ? ' is-selected' : ''}`}
+                    aria-pressed={isSelected}
+                    onClick={() => selectProcurement(procurement)}
+                    title={`${title} - ${supplierName || procurement.ProcurementRef}`}
                   >
-                    {label}:
-                  </span>
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: '#0f172a',
-                      overflowWrap: 'anywhere',
-                    }}
-                  >
-                    {value}
-                  </span>
-                </div>
-              ))}
+                    <span>{title}</span>
+                    <div className="price-list-procurement-meta">
+                      <small>{supplierName || procurement.ProcurementRef}</small>
+                      {isNegotiating && <small className="price-list-procurement-status">In Negotiation</small>}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-          </section>
+          )}
+        </aside>
 
+        <div className="price-list-content">
+          {selectedProcurement ? (
+            <>
+          <div className="price-list-content-toolbar">
+            <button
+              type="button"
+              className="price-list-sidebar-toggle"
+              onClick={() => setIsProcurementListCollapsed((collapsed) => !collapsed)}
+              title={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
+              aria-label={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
+            >
+              {isProcurementListCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+            </button>
+          </div>
+          <div className={`price-list-source-summary${comparisonProcurement ? ' is-comparing' : ''}`}>
+            <section className="price-list-source-panel price-list-source-panel--purchase">
+              <span className="price-list-source-label">Purchase</span>
+              <strong>{selectedSupplier?.SupplierName || 'Supplier not available'}</strong>
+              <span>{getAgreementIdentifier(selectedProcurement)}</span>
+              <small>Species: {selectedSpecies.join(', ') || 'Not entered'}</small>
+            </section>
+            {comparisonProcurement && (
+              <section className="price-list-source-panel price-list-source-panel--compare">
+                <span className="price-list-source-label">Compare</span>
+                <strong>{comparisonSupplier?.SupplierName || 'Supplier not available'}</strong>
+                <span>{getAgreementIdentifier(comparisonProcurement)}</span>
+                <small>Species: {sharedSpecies.join(', ') || 'No matching species'}</small>
+              </section>
+            )}
+          </div>
 
-
-          {selectedGrades.length === 0 ? (
+          {selectedGrades.length === 0 && comparisonGrades.length === 0 ? (
             <section className="empty-state" style={{ marginTop: '20px' }}>
               <h3>No grades found</h3>
               <p>
@@ -322,150 +448,164 @@ export function PriceListTab({
               </p>
             </section>
           ) : (
-            <section className="table-card" style={{ marginTop: '20px' }}>
-              <table>
+            <section className="table-card price-list-table-card">
+              <div className="price-list-table-toolbar">
+                <strong>Price List</strong>
+                <label htmlFor="price-list-product-filter">Product</label>
+                <select
+                  id="price-list-product-filter"
+                  value={productTypeFilter}
+                  onChange={(event) => setProductTypeFilter(event.target.value as ProductTypeFilter)}
+                >
+                  <option value="All">All</option>
+                  <option value="Green">Green</option>
+                  <option value="Burnt">Burnt</option>
+                </select>
+                <label htmlFor="price-list-compare-procurement">Compare with</label>
+                <select
+                  id="price-list-compare-procurement"
+                  value={compareProcurementRef}
+                  onChange={(event) => setCompareProcurementRef(event.target.value)}
+                >
+                  <option value="">None</option>
+                  {procurements
+                    .filter((procurement) =>
+                      comparableProcurements.some((candidate) => candidate.ProcurementRef === procurement.ProcurementRef),
+                    )
+                    .map((procurement) => {
+                      const title = getProcurementHeaderDisplay(procurement).text
+                      const supplierName = suppliers.find(
+                        (supplier) =>
+                          String(supplier.SupplierID) === String(procurement.SupplierID) ||
+                          String(supplier.SupplierReference) === String(procurement.SupplierID),
+                      )?.SupplierName
+                      return (
+                        <option key={procurement.ProcurementRef} value={procurement.ProcurementRef}>
+                          {title} - {supplierName || procurement.ProcurementRef}
+                        </option>
+                      )
+                    })}
+                </select>
+                {compareProcurementRef && (
+                  <button
+                    type="button"
+                    className="price-list-clear-compare"
+                    onClick={() => setCompareProcurementRef('')}
+                    title="Clear comparison"
+                    aria-label="Clear comparison"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              {gradeGroups.length === 0 ? (
+                <div className="price-list-filter-empty">
+                  No grades for this product type.
+                </div>
+              ) : (
+              <div className="price-list-table-scroll">
+              <table className="price-list-table">
+                <colgroup>
+                  {tableColumns.map((column) => (
+                    <col key={column.key} style={{ width: `${columnWidths[column.key]}px` }} />
+                  ))}
+                </colgroup>
                 <thead>
+                  {comparisonProcurement && (
+                    <tr className="price-list-source-header-row">
+                      <th colSpan={3} aria-hidden="true" />
+                      <th className="price-list-source-header price-list-source-header--purchase">
+                        {selectedSupplier?.SupplierName || selectedProcurement.ProcurementRef}
+                      </th>
+                      <th className="price-list-source-header price-list-source-header--compare">
+                        {comparisonSupplier?.SupplierName || comparisonProcurement.ProcurementRef}
+                      </th>
+                      <th aria-hidden="true" />
+                    </tr>
+                  )}
                   <tr>
-                    <th>Grade</th>
-                    <th>Product Type</th>
-                    <th>Agreed Purchase Price / t</th>
-                    <th>Resale Price / t</th>
+                    {tableColumns.map(({ key, label }) => (
+                      <th
+                        key={key}
+                        className={key === 'species' ? 'price-list-species-header' : undefined}
+                        title={
+                          key === 'compare'
+                            ? `Agreed purchase price from ${comparisonSupplier?.SupplierName || comparisonProcurement?.ProcurementRef || 'the comparison supplier'}`
+                            : key === 'difference'
+                            ? 'Selected purchase price minus comparison purchase price; positive means the selected procurement is higher.'
+                            : undefined
+                        }
+                      >
+                        <span className="price-list-column-heading">{label}</span>
+                        <span
+                          className={`price-list-column-resizer${activeResizingColumn === key ? ' is-resizing' : ''}`}
+                          onMouseDown={(event) => startColumnResize(key, event)}
+                          title={`Drag to resize ${label.toLowerCase()} column`}
+                          aria-hidden="true"
+                        />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedGrades.map((grade) => {
-                    const key = getGradeKey(grade)
-                    const hasSavedPrice = (Number(grade.ResalePrice) || 0) > 0
-                    const isEditing = editingKeys[key] === true
-                    const isLocked = hasSavedPrice && !isEditing
-                    const isSavingThisRow = savingKey === key
-                    const typedValue = resalePrices[key] ?? ''
-                    const saveDisabled =
-                      isSavingThisRow ||
-                      (!hasSavedPrice && typedValue.trim() === '')
+                  {gradeGroups.map((group, groupIndex) => (
+                    <Fragment key={group.key}>
+                      {groupIndex > 0 && (
+                        <tr className="price-list-group-gap" aria-hidden="true">
+                          <td colSpan={tableColumns.length} />
+                        </tr>
+                      )}
+                      {group.rows.map((row) => {
+                    const grade = row.selectedGrade
+                    const comparisonGrade = row.comparisonGrade
+                    const selectedPurchasePrice = getComparablePurchasePrice(grade)
+                    const comparisonPurchasePrice = getComparablePurchasePrice(comparisonGrade)
+                    const purchaseDifference =
+                      selectedPurchasePrice === null || comparisonPurchasePrice === null
+                        ? null
+                        : selectedPurchasePrice - comparisonPurchasePrice
 
                     return (
-                      <tr key={key}>
-                        <td>{grade.GradeName}</td>
-                        <td><ProductTypeBadge productType={grade.ProductType} /></td>
-                        <td>
-                          {typeof grade.AgreedPricePerTonne === 'string' &&
-                          grade.AgreedPricePerTonne.trim().toLowerCase().startsWith('c') ? (
-                            <span style={{ color: '#b91c1c', fontStyle: 'italic', fontWeight: 600 }}>
-                              Cancelled
-                            </span>
-                          ) : (
-                            `AUD $${Number(grade.AgreedPricePerTonne || 0).toFixed(2)}`
-                          )}
-                        </td>
-                        <td>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              flexWrap: 'wrap',
-                            }}
-                          >
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={typedValue}
-                              disabled={isLocked || isSavingThisRow}
-                              onChange={(event) =>
-                                updateResalePrice(grade, event.target.value)
-                              }
-                              aria-label={`Resale price for ${grade.GradeName}`}
-                              placeholder="0.00"
-                              style={{
-                                width: '90px',
-                                backgroundColor: isLocked ? '#f1f5f9' : '#ffffff',
-                                color: isLocked ? '#475569' : '#0f172a',
-                                cursor: isLocked ? 'not-allowed' : 'text',
-                              }}
-                            />
-
-                            {isLocked ? (
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => startEditing(grade)}
-                                title="Edit resale price"
-                                aria-label={`Edit resale price for ${grade.GradeName}`}
-                                style={{
-                                  width: 'auto',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: '6px 10px',
-                                }}
-                              >
-                                <Pencil size={14} />
-                              </button>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveRow(grade)}
-                                  disabled={saveDisabled}
-                                  style={{
-                                    width: 'auto',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '6px 12px',
-                                    fontSize: '0.82rem',
-                                    fontWeight: 700,
-                                    color: '#ffffff',
-                                    background: 'var(--primary)',
-                                    border: '1px solid var(--primary)',
-                                    borderRadius: '6px',
-                                    opacity: saveDisabled ? 0.5 : 1,
-                                    cursor: saveDisabled
-                                      ? 'not-allowed'
-                                      : 'pointer',
-                                  }}
-                                >
-                                  <Save size={14} />
-                                  {isSavingThisRow ? 'Saving…' : 'Save'}
-                                </button>
-
-                                {hasSavedPrice && (
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    onClick={() => cancelEditing(grade)}
-                                    disabled={isSavingThisRow}
-                                    style={{
-                                      width: 'auto',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '6px',
-                                      padding: '6px 12px',
-                                      fontSize: '0.82rem',
-                                    }}
-                                  >
-                                    <X size={14} />
-                                    Cancel
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
+                      <tr key={row.key}>
+                        <td className="price-list-species-cell">{row.species || '—'}</td>
+                        <td className="price-list-grade-cell">{row.gradeName}</td>
+                        <td className="price-list-product-cell"><ProductTypeBadge productType={row.productType} /></td>
+                        <td className="price-list-price-cell">{displayPurchasePrice(grade)}</td>
+                        {compareProcurementRef && (
+                          <>
+                            <td className="price-list-price-cell">{displayPurchasePrice(comparisonGrade)}</td>
+                            <td className={`price-list-price-cell price-list-difference${purchaseDifference === null ? '' : purchaseDifference > 0 ? ' is-higher' : purchaseDifference < 0 ? ' is-lower' : ''}`}>
+                              {purchaseDifference === null
+                                ? '—'
+                                : `${purchaseDifference > 0 ? '+' : purchaseDifference < 0 ? '−' : ''}$${Math.abs(purchaseDifference).toFixed(2)}`}
+                            </td>
+                          </>
+                        )}
                       </tr>
                     )
-                  })}
+                      })}
+                    </Fragment>
+                  ))}
                 </tbody>
               </table>
+              </div>
+              )}
             </section>
           )}
 
-          {message && <p className="success-message">{message}</p>}
-          {errorMessage && <p className="error-message">{errorMessage}</p>}
-        </>
-      )}
+            </>
+          ) : (
+            <section className="empty-state price-list-selection-empty">
+              <h3>{procurements.length ? 'Select a procurement' : 'No procurements found'}</h3>
+              <p>
+                {procurements.length
+                  ? 'Choose an agreement from the list to view its price list.'
+                  : 'Add a procurement agreement before viewing prices.'}
+              </p>
+            </section>
+          )}
+        </div>
+      </div>
     </section>
   )
 }

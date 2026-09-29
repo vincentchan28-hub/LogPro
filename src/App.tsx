@@ -268,7 +268,7 @@ function App() {
     }[updateStatus.state]
 
     return (
-      <div className="modal-backdrop" onClick={() => setIsUpdateModalOpen(false)}>
+      <div className="modal-backdrop update-modal-backdrop" onClick={() => setIsUpdateModalOpen(false)}>
       <aside
         className="update-notice"
         role="status"

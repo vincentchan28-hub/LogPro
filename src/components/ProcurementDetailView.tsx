@@ -356,10 +356,7 @@ export function ProcurementDetailView({
             value={contact?.ContactName || '—'}
             subvalue={contactDetailString || undefined}
           />
-          <Field label="Agreement Type" value={procurement.AgreementType} />
           <Field label={`${procurement.AgreementType} Detail / Code`} value={procurement.AgreementDetail} />
-          <Field label="Agreement Start Date" value={procurement.StartDate} />
-          <Field label="Agreement End Date" value={procurement.EndDate} />
         </div>
       </div>
 
@@ -367,9 +364,10 @@ export function ProcurementDetailView({
       <div style={sectionStyle}>
         <h3 style={sectionTitleStyle}>2. Plantation Name and Harvest Period</h3>
         <div
+          className="procurement-harvest-details-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: '16px',
           }}
         >
@@ -377,6 +375,8 @@ export function ProcurementDetailView({
           <Field label="Species" value={procurement.Species || '—'} />
           <Field label="Harvest Period Start" value={procurement.HarvestPeriodStart} />
           <Field label="Harvest Period End" value={procurement.HarvestPeriodEnd} />
+          <Field label="Agreement Start Date" value={procurement.StartDate} />
+          <Field label="Agreement End Date" value={procurement.EndDate} />
         </div>
       </div>
 
