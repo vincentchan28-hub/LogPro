@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Tags } from 'lucide-react'
 import type {
   Procurement,
   ProcurementGrade,
@@ -364,9 +364,11 @@ export function PriceListTab({
   return (
     <section className="page-content price-list-page">
       <div className="page-heading">
-        <div>
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <Tags size={22} />
+          </div>
           <h2>Price List</h2>
-          <p>Compare agreed purchase prices by species, grade, and product.</p>
         </div>
       </div>
 
@@ -411,30 +413,91 @@ export function PriceListTab({
         <div className="price-list-content">
           {selectedProcurement ? (
             <>
-          <div className="price-list-content-toolbar">
-            <button
-              type="button"
-              className="price-list-sidebar-toggle"
-              onClick={() => setIsProcurementListCollapsed((collapsed) => !collapsed)}
-              title={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
-              aria-label={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
-            >
-              {isProcurementListCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
-            </button>
+          {/* 1. Price List Title & Filters Header Row (Top of page, above suppliers panel) */}
+          <div className="price-list-top-toolbar">
+            <div className="price-list-top-toolbar-left">
+              <button
+                type="button"
+                className="price-list-sidebar-toggle"
+                onClick={() => setIsProcurementListCollapsed((collapsed) => !collapsed)}
+                title={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
+                aria-label={isProcurementListCollapsed ? 'Show procurement list' : 'Hide procurement list'}
+              >
+                {isProcurementListCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+              </button>
+              <strong className="price-list-top-title">Price List</strong>
+            </div>
+
+            <div className="price-list-top-toolbar-filters">
+              <label htmlFor="price-list-product-filter">Product</label>
+              <select
+                id="price-list-product-filter"
+                value={productTypeFilter}
+                onChange={(event) => setProductTypeFilter(event.target.value as ProductTypeFilter)}
+              >
+                <option value="All">All</option>
+                <option value="Green">Green</option>
+                <option value="Burnt">Burnt</option>
+              </select>
+              <label htmlFor="price-list-compare-procurement">Compare with</label>
+              <select
+                id="price-list-compare-procurement"
+                value={compareProcurementRef}
+                onChange={(event) => setCompareProcurementRef(event.target.value)}
+              >
+                <option value="">None</option>
+                {procurements
+                  .filter((procurement) =>
+                    comparableProcurements.some((candidate) => candidate.ProcurementRef === procurement.ProcurementRef),
+                  )
+                  .map((procurement) => {
+                    const title = getProcurementHeaderDisplay(procurement).text
+                    const supplierName = suppliers.find(
+                      (supplier) =>
+                        String(supplier.SupplierID) === String(procurement.SupplierID) ||
+                        String(supplier.SupplierReference) === String(procurement.SupplierID),
+                    )?.SupplierName
+                    return (
+                      <option key={procurement.ProcurementRef} value={procurement.ProcurementRef}>
+                        {title} - {supplierName || procurement.ProcurementRef}
+                      </option>
+                    )
+                  })}
+              </select>
+              {compareProcurementRef && (
+                <button
+                  type="button"
+                  className="price-list-clear-compare"
+                  onClick={() => setCompareProcurementRef('')}
+                  title="Clear comparison"
+                  aria-label="Clear comparison"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* 2. Suppliers Header (Light blue panel) with 'Supplier' header above supplier name */}
           <div className={`price-list-source-summary${comparisonProcurement ? ' is-comparing' : ''}`}>
             <section className="price-list-source-panel price-list-source-panel--purchase">
-              <span className="price-list-source-label">Purchase</span>
-              <strong>{selectedSupplier?.SupplierName || 'Supplier not available'}</strong>
-              <span>{getAgreementIdentifier(selectedProcurement)}</span>
-              <small>Species: {selectedSpecies.join(', ') || 'Not entered'}</small>
+              <span className="price-list-source-label">Supplier</span>
+              <strong className="price-list-source-name">{selectedSupplier?.SupplierName || 'Supplier not available'}</strong>
+              <div className="price-list-source-details">
+                <span className="price-list-source-agreement">{getAgreementIdentifier(selectedProcurement)}</span>
+                <span className="price-list-source-meta-dot">•</span>
+                <span className="price-list-source-species">Species: {selectedSpecies.join(', ') || 'Not entered'}</span>
+              </div>
             </section>
             {comparisonProcurement && (
               <section className="price-list-source-panel price-list-source-panel--compare">
-                <span className="price-list-source-label">Compare</span>
-                <strong>{comparisonSupplier?.SupplierName || 'Supplier not available'}</strong>
-                <span>{getAgreementIdentifier(comparisonProcurement)}</span>
-                <small>Species: {sharedSpecies.join(', ') || 'No matching species'}</small>
+                <span className="price-list-source-label">Comparison Supplier</span>
+                <strong className="price-list-source-name">{comparisonSupplier?.SupplierName || 'Supplier not available'}</strong>
+                <div className="price-list-source-details">
+                  <span className="price-list-source-agreement">{getAgreementIdentifier(comparisonProcurement)}</span>
+                  <span className="price-list-source-meta-dot">•</span>
+                  <span className="price-list-source-species">Species: {sharedSpecies.join(', ') || 'No matching species'}</span>
+                </div>
               </section>
             )}
           </div>
@@ -449,55 +512,6 @@ export function PriceListTab({
             </section>
           ) : (
             <section className="table-card price-list-table-card">
-              <div className="price-list-table-toolbar">
-                <strong>Price List</strong>
-                <label htmlFor="price-list-product-filter">Product</label>
-                <select
-                  id="price-list-product-filter"
-                  value={productTypeFilter}
-                  onChange={(event) => setProductTypeFilter(event.target.value as ProductTypeFilter)}
-                >
-                  <option value="All">All</option>
-                  <option value="Green">Green</option>
-                  <option value="Burnt">Burnt</option>
-                </select>
-                <label htmlFor="price-list-compare-procurement">Compare with</label>
-                <select
-                  id="price-list-compare-procurement"
-                  value={compareProcurementRef}
-                  onChange={(event) => setCompareProcurementRef(event.target.value)}
-                >
-                  <option value="">None</option>
-                  {procurements
-                    .filter((procurement) =>
-                      comparableProcurements.some((candidate) => candidate.ProcurementRef === procurement.ProcurementRef),
-                    )
-                    .map((procurement) => {
-                      const title = getProcurementHeaderDisplay(procurement).text
-                      const supplierName = suppliers.find(
-                        (supplier) =>
-                          String(supplier.SupplierID) === String(procurement.SupplierID) ||
-                          String(supplier.SupplierReference) === String(procurement.SupplierID),
-                      )?.SupplierName
-                      return (
-                        <option key={procurement.ProcurementRef} value={procurement.ProcurementRef}>
-                          {title} - {supplierName || procurement.ProcurementRef}
-                        </option>
-                      )
-                    })}
-                </select>
-                {compareProcurementRef && (
-                  <button
-                    type="button"
-                    className="price-list-clear-compare"
-                    onClick={() => setCompareProcurementRef('')}
-                    title="Clear comparison"
-                    aria-label="Clear comparison"
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
               {gradeGroups.length === 0 ? (
                 <div className="price-list-filter-empty">
                   No grades for this product type.
@@ -515,9 +529,11 @@ export function PriceListTab({
                     <tr className="price-list-source-header-row">
                       <th colSpan={3} aria-hidden="true" />
                       <th className="price-list-source-header price-list-source-header--purchase">
+                        <span className="price-list-table-source-label">Supplier</span>
                         {selectedSupplier?.SupplierName || selectedProcurement.ProcurementRef}
                       </th>
                       <th className="price-list-source-header price-list-source-header--compare">
+                        <span className="price-list-table-source-label">Comparison Supplier</span>
                         {comparisonSupplier?.SupplierName || comparisonProcurement.ProcurementRef}
                       </th>
                       <th aria-hidden="true" />

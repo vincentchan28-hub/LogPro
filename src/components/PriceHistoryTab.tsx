@@ -383,40 +383,12 @@ export function PriceHistoryTab({
       }}
     >
       {/* Top Banner & Action Buttons */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '16px',
-          marginBottom: '20px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                backgroundColor: '#0284c7',
-                color: '#ffffff',
-                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
-              }}
-            >
-              <TrendingUp size={20} />
-            </div>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text)', fontWeight: 800 }}>
-              Price History & Rate Revision Audit
-            </h2>
+      <div className="page-heading">
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <TrendingUp size={22} />
           </div>
-          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '0.92rem' }}>
-            Audit trail of agreed timber rate revisions, indexations, and contract negotiations across all procurements.
-          </p>
+          <h2>Price History</h2>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>

@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" fill="none">
-  <rect width="200" height="240" rx="36" fill="#f8fafc" />
   <!-- Stroke 1 Top-Left Segment -->
   <polygon points="10.4,32 139.9,32 70.3,128.6" fill="#000000" />
 

@@ -19,6 +19,8 @@ import {
   Truck,
   MoreVertical,
   Pencil,
+  MessageSquare,
+  X,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -423,8 +425,31 @@ export function ProcurementsTab({
       AgreedPricePerTonne: '',
       AgreedTonnes: '',
       DeliveredTonnes: '0',
+      Notes: '',
     },
   ])
+
+  // Active action menu index for grade rows (3-dot menu)
+  const [activeGradeMenuIdx, setActiveGradeMenuIdx] = useState<number | null>(null)
+
+  // Grade note modal state
+  const [editingNoteRowIdx, setEditingNoteRowIdx] = useState<number | null>(null)
+  const [tempGradeNote, setTempGradeNote] = useState<string>('')
+
+  // Grade row deletion safety prompt
+  const [deleteConfirmRowIdx, setDeleteConfirmRowIdx] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (activeGradeMenuIdx === null) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (!target?.closest('.grade-row-action-menu-container')) {
+        setActiveGradeMenuIdx(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [activeGradeMenuIdx])
 
   const loadData = useCallback(() => {
     try {
@@ -578,9 +603,23 @@ export function ProcurementsTab({
       AgreedPricePerTonne: '',
       AgreedTonnes: '',
       DeliveredTonnes: '',
+      Notes: '',
     }
     setGradeRows((prev) => [...prev, newRow])
     setIsDirty(true)
+  }
+
+  function handlePromptDeleteRow(index: number) {
+    if (gradeRows.length <= 1) {
+      setErrorMsg('At least one grade row must remain.')
+      return
+    }
+    setDeleteConfirmRowIdx(index)
+  }
+
+  function handleOpenGradeNotes(index: number) {
+    setEditingNoteRowIdx(index)
+    setTempGradeNote(gradeRows[index]?.Notes || '')
   }
 
   function handleRemoveGradeRow(index: number) {
@@ -925,6 +964,7 @@ export function ProcurementsTab({
         AgreedTonnes: agreedTonnes,
         DeliveredTonnes: deliveredTonnes,
         RemainingTonnes: Math.max(0, agreedTonnes - deliveredTonnes),
+        Notes: String(row.Notes || '').trim(),
       })
     }
 
@@ -1320,40 +1360,26 @@ if (window.logPro?.addProcurementNote) {
   return (
     <div className="page-content" style={{ maxWidth: '1440px', padding: '24px 20px' }}>
       {/* Header bar */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '16px',
-          marginBottom: '20px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FileSpreadsheet size={28} color="var(--primary)" />
-            <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text)' }}>
-              Procurement Agreements
-            </h2>
-            {badgeLabel && (
-              <span
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: '16px',
-                  background: mode === 'new' ? '#f1f5f9' : 'var(--primary-soft)',
-                  color: mode === 'new' ? '#475569' : 'var(--primary-dark)',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                }}
-              >
-                {badgeLabel}
-              </span>
-            )}
+      <div className="page-heading">
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <FileSpreadsheet size={22} />
           </div>
-          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '0.92rem' }}>
-            Manage log contracts, plantation agreements, pricing per tonne, and delivery tracking.
-          </p>
+          <h2>Procurement Agreements</h2>
+          {badgeLabel && (
+            <span
+              style={{
+                padding: '4px 12px',
+                borderRadius: '16px',
+                background: mode === 'new' ? '#f1f5f9' : 'var(--primary-soft)',
+                color: mode === 'new' ? '#475569' : 'var(--primary-dark)',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+              }}
+            >
+              {badgeLabel}
+            </span>
+          )}
         </div>
 
         <button
@@ -2940,7 +2966,7 @@ if (window.logPro?.addProcurementNote) {
                       {agreedTonnesMode === 'per-grade' && (
                         <col style={{ width: `${gradeColumnWidths.agreedTonnes}px` }} />
                       )}
-                      <col style={{ width: '45px' }} />
+                      <col style={{ width: '74px' }} />
                     </colgroup>
                     <thead>
                       <tr style={{ background: 'var(--primary-soft)', color: 'var(--primary-dark)' }}>
@@ -3235,21 +3261,104 @@ if (window.logPro?.addProcurementNote) {
                             )}
 
                             <td style={{ padding: '6px 4px', textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveGradeRow(idx)}
-                                style={{
-                                  width: 'auto',
-                                  padding: '4px',
-                                  background: 'transparent',
-                                  borderColor: 'transparent',
-                                  color: '#94a3b8',
-                                  cursor: 'pointer',
-                                }}
-                                title="Delete row"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                {/* Message icon for grade note */}
+                                {(() => {
+                                  const hasNote = Boolean(row.Notes && row.Notes.trim())
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenGradeNotes(idx)}
+                                      style={{
+                                        width: '28px',
+                                        height: '28px',
+                                        padding: 0,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        borderRadius: '5px',
+                                        border: hasNote ? '1px solid #bfdbfe' : '1px solid transparent',
+                                        background: hasNote ? '#eff6ff' : 'transparent',
+                                        color: hasNote ? '#0284c7' : '#94a3b8',
+                                        cursor: 'pointer',
+                                      }}
+                                      title={hasNote ? `Note: ${row.Notes}` : 'Add note for this grade'}
+                                      aria-label={hasNote ? `Edit note for ${row.GradeName || 'grade'}` : `Add note for ${row.GradeName || 'grade'}`}
+                                    >
+                                      <MessageSquare size={16} fill={hasNote ? '#0284c7' : 'none'} />
+                                    </button>
+                                  )
+                                })()}
+
+                                {/* 3-dot action menu for delete */}
+                                <div className="grade-row-action-menu-container" style={{ position: 'relative' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveGradeMenuIdx(activeGradeMenuIdx === idx ? null : idx)}
+                                    style={{
+                                      width: '28px',
+                                      height: '28px',
+                                      padding: 0,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '5px',
+                                      border: activeGradeMenuIdx === idx ? '1px solid #cbd5e1' : '1px solid transparent',
+                                      background: activeGradeMenuIdx === idx ? '#f1f5f9' : 'transparent',
+                                      color: '#64748b',
+                                      cursor: 'pointer',
+                                    }}
+                                    title="More options"
+                                    aria-label="More options"
+                                    aria-expanded={activeGradeMenuIdx === idx}
+                                  >
+                                    <MoreVertical size={16} />
+                                  </button>
+
+                                  {activeGradeMenuIdx === idx && (
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: '100%',
+                                        zIndex: 30,
+                                        minWidth: '130px',
+                                        padding: '4px',
+                                        background: '#ffffff',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                                        marginTop: '4px',
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveGradeMenuIdx(null)
+                                          handlePromptDeleteRow(idx)
+                                        }}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '8px',
+                                          width: '100%',
+                                          padding: '6px 10px',
+                                          border: 0,
+                                          borderRadius: '4px',
+                                          background: 'transparent',
+                                          color: '#dc2626',
+                                          fontSize: '0.84rem',
+                                          fontWeight: 600,
+                                          textAlign: 'left',
+                                          cursor: 'pointer',
+                                        }}
+                                      >
+                                        <Trash2 size={14} /> Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -3676,6 +3785,282 @@ if (window.logPro?.addProcurementNote) {
               </button>
             </div>
           </form>
+        </div>
+      {/* Grade Notes Edit Modal */}
+      {editingNoteRowIdx !== null && gradeRows[editingNoteRowIdx] && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="grade-notes-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(15, 23, 42, 0.48)',
+            backdropFilter: 'blur(2px)',
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setEditingNoteRowIdx(null)
+            }
+          }}
+        >
+          <div
+            style={{
+              width: 'min(100%, 520px)',
+              borderRadius: '12px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                background: '#f8fafc',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '8px',
+                    background: '#e0f2fe',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <MessageSquare size={18} />
+                </div>
+                <div>
+                  <h3 id="grade-notes-modal-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
+                    Grade Notes
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: 'var(--muted)' }}>
+                    {gradeRows[editingNoteRowIdx].GradeName || 'Unnamed Grade'} •{' '}
+                    {gradeRows[editingNoteRowIdx].Species} ({gradeRows[editingNoteRowIdx].ProductType})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingNoteRowIdx(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <label
+                htmlFor="grade-notes-input"
+                style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}
+              >
+                Notes for this grade
+              </label>
+              <textarea
+                id="grade-notes-input"
+                rows={5}
+                value={tempGradeNote}
+                onChange={(e) => setTempGradeNote(e.target.value)}
+                placeholder="Enter notes, specifications, or comments specific to this grade..."
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.5,
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 20px',
+                background: '#f8fafc',
+                borderTop: '1px solid #e2e8f0',
+              }}
+            >
+              {tempGradeNote ? (
+                <button
+                  type="button"
+                  onClick={() => setTempGradeNote('')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#dc2626',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    padding: '6px 8px',
+                  }}
+                >
+                  Clear Note
+                </button>
+              ) : <div />}
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingNoteRowIdx(null)}
+                  className="secondary-button"
+                  style={{ width: 'auto', padding: '8px 14px', fontSize: '0.88rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleGradeRowChange(editingNoteRowIdx, 'Notes', tempGradeNote)
+                    setEditingNoteRowIdx(null)
+                  }}
+                  className="btn-primary"
+                  style={{ width: 'auto', padding: '8px 18px', fontSize: '0.88rem', fontWeight: 600 }}
+                >
+                  Save Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grade Row Delete Confirmation Modal */}
+      {deleteConfirmRowIdx !== null && gradeRows[deleteConfirmRowIdx] && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-grade-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(15, 23, 42, 0.48)',
+            backdropFilter: 'blur(2px)',
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setDeleteConfirmRowIdx(null)
+            }
+          }}
+        >
+          <div
+            style={{
+              width: 'min(100%, 420px)',
+              padding: '24px',
+              borderRadius: '12px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <h3 id="delete-grade-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
+                  Delete Grade Row?
+                </h3>
+                <p style={{ margin: '2px 0 0', fontSize: '0.84rem', color: 'var(--muted)' }}>
+                  This will remove this grade from the agreement.
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '20px',
+                fontSize: '0.88rem',
+              }}
+            >
+              <strong>{gradeRows[deleteConfirmRowIdx].GradeName || 'Unnamed Grade'}</strong>
+              <div style={{ color: 'var(--muted)', marginTop: '2px', fontSize: '0.82rem' }}>
+                {gradeRows[deleteConfirmRowIdx].Species} • {gradeRows[deleteConfirmRowIdx].ProductType}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmRowIdx(null)}
+                className="secondary-button"
+                style={{ width: 'auto', padding: '8px 16px', fontSize: '0.88rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = deleteConfirmRowIdx
+                  setDeleteConfirmRowIdx(null)
+                  handleRemoveGradeRow(idx)
+                }}
+                style={{
+                  width: 'auto',
+                  padding: '8px 18px',
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete Row
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -178,29 +178,11 @@ export function ContactsTab({
     <section className="page-content" style={{ maxWidth: '1280px', margin: '0 auto', paddingBottom: '40px' }}>
       {/* Header bar */}
       <div className="page-heading">
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '8px',
-                background: '#e0f2fe',
-                color: '#0284c7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Users size={22} />
-            </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 700 }}>Supplier Contacts Directory</h2>
-              <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: '0.88rem' }}>
-                All contacts across timber suppliers, harvest managers, and procurement representatives.
-              </p>
-            </div>
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <Users size={22} />
           </div>
+          <h2>Contacts</h2>
         </div>
 
         <button

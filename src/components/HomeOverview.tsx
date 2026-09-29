@@ -4,6 +4,7 @@ import {
   Scale,
   ArrowRight,
   Truck,
+  LayoutDashboard,
 } from 'lucide-react'
 import { type Supplier, type Page, type Procurement } from '../types'
 
@@ -234,13 +235,13 @@ export function HomeOverview({
 
   return (
     <div className="home-content" style={{ maxWidth: '1240px', padding: '32px 24px' }}>
-      <div style={{ marginBottom: '28px' }}>
-        <h2 style={{ fontSize: '1.8rem', margin: '0 0 8px', color: 'var(--text)' }}>
-          Log Procurement Dashboard
-        </h2>
-        <p style={{ margin: 0, color: 'var(--muted)', fontSize: '1rem' }}>
-          Overview of timber supply commitments, weekly haulage forecasts, and delivery progress.
-        </p>
+      <div className="page-heading">
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <LayoutDashboard size={22} />
+          </div>
+          <h2>Home</h2>
+        </div>
       </div>
 
       {/* KPI Cards Row */}

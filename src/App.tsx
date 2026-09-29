@@ -16,7 +16,7 @@ import { ContactsTab } from './components/ContactsTab'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
 import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
-import { Building, Download, Plus, RefreshCw, RotateCcw, Trees, Settings as SettingsIcon, Pencil, X } from 'lucide-react'
+import { Building, Download, Layers, Plus, RefreshCw, RotateCcw, Settings as SettingsIcon, Pencil, X } from 'lucide-react'
 import './App.css'
 
 
@@ -566,12 +566,11 @@ function App() {
     return (
       <section className="page-content" style={{ maxWidth: '1200px' }}>
         <div className="page-heading">
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Building size={24} color="var(--primary)" />
-              <h2 style={{ margin: 0 }}>Suppliers Register</h2>
+          <div className="page-title-group">
+            <div className="page-title-icon-badge">
+              <Building size={22} />
             </div>
-            <p>Manage businesses, plantation growers and timber contractors.</p>
+            <h2>Suppliers Register</h2>
           </div>
 
           <button
@@ -766,9 +765,11 @@ function App() {
     return (
       <section className="page-content" style={{ maxWidth: '1000px' }}>
         <div className="page-heading">
-          <div>
+          <div className="page-title-group">
+            <div className="page-title-icon-badge">
+              <Layers size={22} />
+            </div>
             <h2>{page?.label}</h2>
-            <p>{page?.description}</p>
           </div>
         </div>
 
@@ -785,7 +786,10 @@ function App() {
   if (isStarting) {
     return (
       <main className="app">
-        <section className="setup-card">
+        <section className="setup-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <div style={{ width: '56px', height: '64px', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+            <img src="/logo.png" alt="LogPro Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
           <h1>LogPro</h1>
           <p className="subtitle">Opening your Log Procurement workbook…</p>
         </section>
@@ -799,8 +803,8 @@ if (selectedWorkbook) {
       <div className="sticky-header-container">
 <header className="top-bar">
   <div className="brand-group">
-    <div className="brand-logo-badge">
-      <Trees size={36} />
+    <div className="brand-logo-badge" title="LogPro">
+      <img src="/logo.png" alt="LogPro Logo" className="brand-logo-img" />
     </div>
     <div>
       <div className="brand-title-wrap">
@@ -1154,8 +1158,15 @@ if (selectedWorkbook) {
   return (
     <main className="app">
       <section className="setup-card">
-        <h1>LogPro</h1>
-        <p className="subtitle">Log Procurement Tracker</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+          <div style={{ width: '48px', height: '54px', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <img src="/logo.png" alt="LogPro Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '2rem' }}>LogPro</h1>
+            <p className="subtitle" style={{ margin: '2px 0 0', fontSize: '0.95rem' }}>Log Procurement Tracker</p>
+          </div>
+        </div>
 
         <h2>Welcome</h2>
         <p>

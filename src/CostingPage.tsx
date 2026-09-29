@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Calculator } from 'lucide-react'
 import './costing.css'
 import RateTrendChart from './RateTrendChart'
 import {
@@ -589,13 +590,11 @@ export default function CostingPage({ workbookPath }: CostingPageProps) {
   return (
     <section className="page-content costing-page">
       <div className="page-heading">
-        <div>
+        <div className="page-title-group">
+          <div className="page-title-icon-badge">
+            <Calculator size={22} />
+          </div>
           <h2>Costing</h2>
-          <p>
-            Start with the selling price and take off every cost, to see the
-            most you can offer for logs at the mill door. All amounts are per
-            tonne.
-          </p>
         </div>
       </div>
 
