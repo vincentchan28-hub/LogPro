@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { Pencil, Paperclip, X, History, MessageSquare } from 'lucide-react'
+import { Pencil, Paperclip, X, History } from 'lucide-react'
 import type {
   Procurement,
   ProcurementGrade,

@@ -16,6 +16,14 @@ import { ContactsTab } from './components/ContactsTab'
 import { PriceHistoryTab } from './components/PriceHistoryTab'
 import { PriceListTab } from './components/PriceListTab'
 import { SettingsModal } from './components/SettingsModal'
+import { loadLogo } from './logoStorage'
+import {
+  loadHeaderStyle,
+  saveHeaderStyle,
+  titleCss,
+  descriptionCss,
+  type HeaderStyleSettings,
+} from './headerStyle'
 import { Building, Download, Layers, Plus, RefreshCw, RotateCcw, Settings as SettingsIcon, Pencil, X } from 'lucide-react'
 import './App.css'
 
@@ -158,6 +166,27 @@ function App() {
 
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+
+  // Custom logo (empty text means "use the original logo")
+  const [logoSrc, setLogoSrc] = useState('')
+
+  useEffect(() => {
+    if (!selectedWorkbook) {
+      setLogoSrc('')
+      return
+    }
+    void loadLogo(selectedWorkbook).then(setLogoSrc)
+  }, [selectedWorkbook])
+
+  // Header text look (font, size, colour, bold, underline)
+  const [headerStyle, setHeaderStyle] = useState<HeaderStyleSettings>(() =>
+    loadHeaderStyle(),
+  )
+
+  function handleHeaderStyleChange(next: HeaderStyleSettings) {
+    setHeaderStyle(next)
+    saveHeaderStyle(next)
+  }
 
   useEffect(() => {
     const lastWorkbook = readLastWorkbook()
@@ -804,13 +833,13 @@ if (selectedWorkbook) {
 <header className="top-bar">
   <div className="brand-group">
     <div className="brand-logo-badge" title="LogPro">
-      <img src="/logo.png" alt="LogPro Logo" className="brand-logo-img" />
+      <img src={logoSrc || '/logo.png'} alt="LogPro Logo" className="brand-logo-img" />
     </div>
     <div>
       <div className="brand-title-wrap">
-        <h1>LogPro</h1>
+        <h1 style={titleCss(headerStyle.title)}>LogPro</h1>
       </div>
-      <p>Timber & Log Procurement Management System</p>
+      <p style={descriptionCss(headerStyle.description)}>Timber & Log Procurement Management System</p>
     </div>
   </div>
 <button
@@ -897,6 +926,10 @@ if (selectedWorkbook) {
           onWorkbookChanged={applyWorkbookResult}
           hidePriceHistory={hidePriceHistory}
           onToggleHidePriceHistory={handleToggleHidePriceHistory}
+          logoSrc={logoSrc}
+          onLogoChanged={setLogoSrc}
+          headerStyle={headerStyle}
+          onHeaderStyleChange={handleHeaderStyleChange}
         />
 
         {isSupplierFormOpen && (

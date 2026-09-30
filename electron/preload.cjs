@@ -88,6 +88,19 @@ const api = {
   installUpdate() {
     return ipcRenderer.invoke('updates:install')
   },
+
+  // Custom logo
+  saveLogoFile(workbookPath, base64Data) {
+    return ipcRenderer.invoke('logo:save', workbookPath, base64Data)
+  },
+
+  loadLogoFile(workbookPath) {
+    return ipcRenderer.invoke('logo:load', workbookPath)
+  },
+
+  removeLogoFile(workbookPath) {
+    return ipcRenderer.invoke('logo:remove', workbookPath)
+  },
 }
 
 contextBridge.exposeInMainWorld('logProDesktop', api)

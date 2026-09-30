@@ -30,8 +30,17 @@ import {
   PRODUCT_TYPES,
 } from '../types'
 import { ProductTypeBadge } from './ProductTypeBadge'
+import { saveLogo, removeLogo } from '../logoStorage'
+import { TextStyleEditor } from './TextStyleEditor'
+import {
+  DEFAULT_HEADER_STYLE,
+  titleCss,
+  descriptionCss,
+  type HeaderStyleSettings,
+  type TextStyleSettings,
+} from '../headerStyle'
 
-type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook'
+type SettingsTab = 'speciesGrades' | 'suppliers' | 'reports' | 'workbook' | 'appearance'
 // The name the browser uses to remember the size of the Settings box.
 const SETTINGS_SIZE_KEY = 'logpro.settingsModalSize'
 
@@ -111,6 +120,10 @@ type SettingsModalProps = {
   onWorkbookChanged?: (result: WorkbookResult) => void
   hidePriceHistory?: boolean
   onToggleHidePriceHistory?: (hide: boolean) => void
+  logoSrc?: string
+  onLogoChanged?: (src: string) => void
+  headerStyle?: HeaderStyleSettings
+  onHeaderStyleChange?: (next: HeaderStyleSettings) => void
 }
 
 export function SettingsModal({
@@ -123,6 +136,10 @@ export function SettingsModal({
   onWorkbookChanged,
   hidePriceHistory = false,
   onToggleHidePriceHistory,
+  logoSrc = '',
+  onLogoChanged,
+  headerStyle = DEFAULT_HEADER_STYLE,
+  onHeaderStyleChange,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('speciesGrades')
   const [hasCopiedLocation, setHasCopiedLocation] = useState(false)
@@ -132,6 +149,70 @@ export function SettingsModal({
   const [isBackingUp, setIsBackingUp] = useState(false)
   const [isRestoring, setIsRestoring] = useState(false)
   const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
+
+  // Header title and description look
+  function changeTextStyle(
+    part: 'title' | 'description',
+    changes: Partial<TextStyleSettings>,
+  ) {
+    if (part === 'title') {
+      onHeaderStyleChange?.({
+        ...headerStyle,
+        title: { ...headerStyle.title, ...changes },
+      })
+    } else {
+      onHeaderStyleChange?.({
+        ...headerStyle,
+        description: { ...headerStyle.description, ...changes },
+      })
+    }
+  }
+
+  function resetHeaderStyle() {
+    onHeaderStyleChange?.(DEFAULT_HEADER_STYLE)
+  }
+
+  // Company logo
+  const [isSavingLogo, setIsSavingLogo] = useState(false)
+  const [logoMessage, setLogoMessage] = useState('')
+  const [logoError, setLogoError] = useState('')
+
+  async function handleLogoFileChosen(fileList: FileList | null) {
+    const file = fileList?.[0]
+    if (!file) return
+
+    setLogoMessage('')
+    setLogoError('')
+    setIsSavingLogo(true)
+
+    const result = await saveLogo(workbookPath, file)
+
+    if (result.ok) {
+      onLogoChanged?.(result.dataUrl)
+      setLogoMessage('Logo saved. It now shows in the top-left corner.')
+    } else {
+      setLogoError(result.error)
+    }
+
+    setIsSavingLogo(false)
+  }
+
+  async function handleRemoveLogo() {
+    setLogoMessage('')
+    setLogoError('')
+    setIsSavingLogo(true)
+
+    const result = await removeLogo(workbookPath)
+
+    if (result.ok) {
+      onLogoChanged?.('')
+      setLogoMessage('Custom logo removed. The original LogPro logo is back.')
+    } else {
+      setLogoError(result.error)
+    }
+
+    setIsSavingLogo(false)
+  }
 
   // Species & Grade definition state
   const [speciesGradesVersion, setSpeciesGradesVersion] = useState(0)
@@ -1160,6 +1241,15 @@ export function SettingsModal({
             <FileSpreadsheet size={15} />
             <span>Workbook & Export</span>
           </button>
+
+          <button
+            type="button"
+            className={`settings-tab-btn ${activeTab === 'appearance' ? 'active' : ''}`}
+            onClick={() => setActiveTab('appearance')}
+          >
+            <Pencil size={15} />
+            <span>Header Style</span>
+          </button>
         </div>
 
         {/* Tab Content Area */}
@@ -2131,6 +2221,127 @@ export function SettingsModal({
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* TAB 5: HEADER STYLE */}
+          {activeTab === 'appearance' && (
+            <div className="settings-tab-pane">
+              <div className="pane-header-actions">
+                <div>
+                  <h4 className="pane-title">Header Style</h4>
+                  <p className="pane-subtitle">
+                    Change how the LogPro title and description look. Changes save automatically.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={resetHeaderStyle}
+                  style={{ width: 'auto', padding: '7px 14px', fontSize: '0.85rem' }}
+                >
+                  Reset to default
+                </button>
+              </div>
+
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: '8px',
+                  background:
+                    'linear-gradient(90deg, #38bdf8 0%, #2563eb 14%, #1e3a8a 38%, #0f172a 80%, #020617 100%)',
+                }}
+              >
+                <div style={titleCss(headerStyle.title)}>LogPro</div>
+                <div style={descriptionCss(headerStyle.description)}>
+                  Timber & Log Procurement Management System
+                </div>
+              </div>
+
+              {/* Company Logo (moved here) */}
+              <div className="tool-card">
+                <div className="tool-card-icon bg-blue-light">
+                  <Plus size={22} className="text-blue" />
+                </div>
+
+                <div className="tool-card-body">
+                  <h5>Company Logo</h5>
+
+                  <p>
+                    Choose an image for the main logo (top-left corner). It is
+                    shrunk to fit the logo space and saved in the
+                    Attachments/assets folder next to your workbook.
+                  </p>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      marginTop: '12px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <img
+                      src={logoSrc || '/logo.png'}
+                      alt="Current logo"
+                      style={{ width: '44px', height: '48px', objectFit: 'contain' }}
+                    />
+
+                    <label
+                      className="secondary-button"
+                      style={{
+                        width: 'auto',
+                        padding: '8px 14px',
+                        cursor: isSavingLogo || !workbookPath ? 'not-allowed' : 'pointer',
+                        opacity: isSavingLogo || !workbookPath ? 0.6 : 1,
+                      }}
+                    >
+                      {isSavingLogo ? 'Saving…' : 'Choose Logo Image'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+                        hidden
+                        disabled={isSavingLogo || !workbookPath}
+                        onChange={(event) => {
+                          void handleLogoFileChosen(event.target.files)
+                          event.target.value = ''
+                        }}
+                      />
+                    </label>
+
+                    {logoSrc && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleRemoveLogo()}
+                        disabled={isSavingLogo}
+                        style={{ width: 'auto', padding: '8px 14px' }}
+                      >
+                        Remove custom logo
+                      </button>
+                    )}
+                  </div>
+
+                  {logoMessage && <p className="notice notice-ok">{logoMessage}</p>}
+                  {logoError && <p className="notice notice-error">{logoError}</p>}
+                </div>
+              </div>
+
+              <TextStyleEditor
+                title="Header title (LogPro)"
+                hint="The big name at the top-left of the app."
+                value={headerStyle.title}
+                onChange={(changes) => changeTextStyle('title', changes)}
+              />
+
+              <TextStyleEditor
+                title="Header description"
+                hint="The line under the title. It sits inside a pill-shaped border in the same colour."
+                value={headerStyle.description}
+                showFill
+                onChange={(changes) => changeTextStyle('description', changes)}
+              />
             </div>
           )}
 

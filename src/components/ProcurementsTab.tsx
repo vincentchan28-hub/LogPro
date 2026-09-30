@@ -3786,6 +3786,8 @@ if (window.logPro?.addProcurementNote) {
             </div>
           </form>
         </div>
+      )}
+
       {/* Grade Notes Edit Modal */}
       {editingNoteRowIdx !== null && gradeRows[editingNoteRowIdx] && (
         <div

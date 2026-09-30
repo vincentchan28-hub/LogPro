@@ -1708,6 +1708,71 @@ ipcMain.handle('backup:restore', async (_event, currentWorkbookPath) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Custom logo: saved as Attachments/assets/logo.png next to the workbook
+// ---------------------------------------------------------------------------
+
+function getLogoPath(workbookPath) {
+  return path.join(getAttachmentsRoot(workbookPath), 'assets', 'logo.png');
+}
+
+ipcMain.handle('logo:save', async (_event, workbookPath, base64Data) => {
+  try {
+    if (!workbookPath || !base64Data) {
+      return { ok: false, error: 'Missing workbook path or image data.' };
+    }
+
+    const logoPath = getLogoPath(workbookPath);
+    fs.mkdirSync(path.dirname(logoPath), { recursive: true });
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    await retryWhileLocked('save logo', () => {
+      fs.writeFileSync(logoPath, buffer);
+    });
+
+    return { ok: true, error: '' };
+  } catch (error) {
+    console.error('Could not save logo:', error);
+    return { ok: false, error: friendlyError(error, 'save the logo') };
+  }
+});
+
+ipcMain.handle('logo:load', async (_event, workbookPath) => {
+  try {
+    if (!workbookPath) {
+      return { base64: '', error: '' };
+    }
+
+    const logoPath = getLogoPath(workbookPath);
+    if (!fs.existsSync(logoPath)) {
+      return { base64: '', error: '' };
+    }
+
+    return { base64: fs.readFileSync(logoPath).toString('base64'), error: '' };
+  } catch (error) {
+    console.error('Could not load logo:', error);
+    return { base64: '', error: friendlyError(error, 'read the logo') };
+  }
+});
+
+ipcMain.handle('logo:remove', async (_event, workbookPath) => {
+  try {
+    if (!workbookPath) {
+      return { ok: true, error: '' };
+    }
+
+    const logoPath = getLogoPath(workbookPath);
+    await retryWhileLocked('remove logo', () => {
+      fs.rmSync(logoPath, { force: true });
+    });
+
+    return { ok: true, error: '' };
+  } catch (error) {
+    console.error('Could not remove logo:', error);
+    return { ok: false, error: friendlyError(error, 'remove the logo') };
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
 
