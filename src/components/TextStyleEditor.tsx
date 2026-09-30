@@ -10,10 +10,8 @@ type TextStyleEditorProps = {
   title: string
   hint: string
   value: TextStyleSettings
-  onChan  value: TextStyleSettings
   onChange: (changes: Partial<TextStyleSettings>) => void
   showFill?: boolean
-onChange: (changes: Partial<TextStyleSettings>) => void;
 }
 
 const fieldStyle: CSSProperties = {

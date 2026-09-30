@@ -1614,6 +1614,183 @@ export const webLogPro = {
     }
   },
 
+  async completeProcurement(
+    workbookPath: string,
+    procurementRef: string,
+    options?: {
+      reason?: string
+      notes?: string
+      completedDate?: string
+    },
+  ): Promise<{ error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { error: 'No workbook is open.' }
+
+    try {
+      const procurements = readProcurements(workbook)
+      const targetIndex = procurements.findIndex(
+        (p) => p.ProcurementRef.trim().toLowerCase() === procurementRef.trim().toLowerCase(),
+      )
+      if (targetIndex === -1) {
+        return { error: `Procurement "${procurementRef}" not found.` }
+      }
+
+      const now = formatTimestamp()
+      const completedDate = options?.completedDate || now
+      const reason = options?.reason || 'Procurement Stopped / Completed'
+      const notes = options?.notes || ''
+
+      const targetProc = procurements[targetIndex]
+      targetProc.Status = 'Completed'
+      targetProc.ChangedBy = 'User'
+      targetProc.ChangedDate = now
+      if (notes) {
+        targetProc.Notes = targetProc.Notes
+          ? `${targetProc.Notes}\n[Completed ${now}]: ${notes}`
+          : `[Completed ${now}]: ${notes}`
+      }
+
+      setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
+
+      // Add PriceHistory snapshot records for each grade in this completed procurement
+      const grades = readProcurementGrades(workbook, procurementRef)
+      const priceHistory = readPriceHistory(workbook)
+
+      for (const g of grades) {
+        const agreedPrice =
+          typeof g.AgreedPricePerTonne === 'string' &&
+          g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+            ? 0
+            : Number(g.AgreedPricePerTonne) || 0
+
+        priceHistory.push({
+          PriceHistoryID: priceHistory.length + 1,
+          ProcurementRef: procurementRef,
+          ProcurementGradeID: g.ProcurementGradeID,
+          ProductType: g.ProductType || 'Green',
+          GradeName: g.GradeName,
+          PreviousPrice: agreedPrice,
+          NewPrice: agreedPrice,
+          ChangeType: 'Procurement Completed',
+          Reason: reason,
+          EffectiveDateTime: completedDate,
+          Notes: notes || g.Notes || '',
+          RecordedBy: 'User',
+          RecordedDateTime: now,
+        })
+      }
+
+      setRows(workbook, 'PriceHistory', HEADERS.PriceHistory, priceHistory as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+      return { error: '' }
+    } catch (e: any) {
+      return { error: e?.message || String(e) }
+    }
+  },
+
+  async reopenProcurement(
+    workbookPath: string,
+    procurementRef: string,
+    options?: {
+      reason?: string
+      notes?: string
+    },
+  ): Promise<{ error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { error: 'No workbook is open.' }
+
+    try {
+      const procurements = readProcurements(workbook)
+      const targetIndex = procurements.findIndex(
+        (p) => p.ProcurementRef.trim().toLowerCase() === procurementRef.trim().toLowerCase(),
+      )
+      if (targetIndex === -1) {
+        return { error: `Procurement "${procurementRef}" not found.` }
+      }
+
+      const now = formatTimestamp()
+      const targetProc = procurements[targetIndex]
+      // Restore status to 'Active' (or 'Accepted' if acceptance date was present, but active in ledger)
+      targetProc.Status = targetProc.AcceptanceDate ? 'Accepted' : 'Active'
+      targetProc.ChangedBy = 'User'
+      targetProc.ChangedDate = now
+      const reopenNote = options?.notes || options?.reason || 'Procurement re-opened / uncompleted'
+      targetProc.Notes = targetProc.Notes
+        ? `${targetProc.Notes}\n[Reopened ${now}]: ${reopenNote}`
+        : `[Reopened ${now}]: ${reopenNote}`
+
+      setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
+
+      // Add PriceHistory snapshot record indicating re-opened
+      const grades = readProcurementGrades(workbook, procurementRef)
+      const priceHistory = readPriceHistory(workbook)
+      for (const g of grades) {
+        const agreedPrice =
+          typeof g.AgreedPricePerTonne === 'string' &&
+          g.AgreedPricePerTonne.trim().toLowerCase().startsWith('c')
+            ? 0
+            : Number(g.AgreedPricePerTonne) || 0
+
+        priceHistory.push({
+          PriceHistoryID: priceHistory.length + 1,
+          ProcurementRef: procurementRef,
+          ProcurementGradeID: g.ProcurementGradeID,
+          ProductType: g.ProductType || 'Green',
+          GradeName: g.GradeName,
+          PreviousPrice: agreedPrice,
+          NewPrice: agreedPrice,
+          ChangeType: 'Procurement Re-opened',
+          Reason: reopenNote,
+          EffectiveDateTime: now,
+          Notes: 'Re-opened and restored to active ledger',
+          RecordedBy: 'User',
+          RecordedDateTime: now,
+        })
+      }
+
+      setRows(workbook, 'PriceHistory', HEADERS.PriceHistory, priceHistory as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+      return { error: '' }
+    } catch (e: any) {
+      return { error: e?.message || String(e) }
+    }
+  },
+
+  async extendProcurementDate(
+    workbookPath: string,
+    procurementRef: string,
+    newEndDate: string,
+    fieldToExtend: 'HarvestPeriodEnd' | 'EndDate' = 'EndDate',
+  ): Promise<{ error: string }> {
+    const workbook = getWorkbook(workbookPath)
+    if (!workbook) return { error: 'No workbook is open.' }
+
+    try {
+      const procurements = readProcurements(workbook)
+      const targetIndex = procurements.findIndex(
+        (p) => p.ProcurementRef.trim().toLowerCase() === procurementRef.trim().toLowerCase(),
+      )
+      if (targetIndex === -1) {
+        return { error: `Procurement "${procurementRef}" not found.` }
+      }
+
+      const now = formatTimestamp()
+      const targetProc = procurements[targetIndex]
+      targetProc[fieldToExtend] = newEndDate
+      if (fieldToExtend === 'HarvestPeriodEnd' && !targetProc.EndDate) {
+        targetProc.EndDate = newEndDate
+      }
+      targetProc.ChangedBy = 'User'
+      targetProc.ChangedDate = now
+
+      setRows(workbook, 'Procurements', HEADERS.Procurements, procurements as any)
+      saveWorkbookToStorage(workbookPath, workbook)
+      return { error: '' }
+    } catch (e: any) {
+      return { error: e?.message || String(e) }
+    }
+  },
+
   getProcurementTimeline(workbookPath: string, procurementRef: string): TimelineEvent[] {
     const workbook = getWorkbook(workbookPath)
     if (!workbook) return []

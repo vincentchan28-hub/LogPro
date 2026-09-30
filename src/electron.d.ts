@@ -177,6 +177,32 @@ declare global {
         procurementRef: string,
       ) => Promise<{ error: string }>
 
+      completeProcurement: (
+        workbookPath: string,
+        procurementRef: string,
+        options?: {
+          reason?: string
+          notes?: string
+          completedDate?: string
+        },
+      ) => Promise<{ error: string }>
+
+      reopenProcurement: (
+        workbookPath: string,
+        procurementRef: string,
+        options?: {
+          reason?: string
+          notes?: string
+        },
+      ) => Promise<{ error: string }>
+
+      extendProcurementDate: (
+        workbookPath: string,
+        procurementRef: string,
+        newEndDate: string,
+        fieldToExtend?: 'HarvestPeriodEnd' | 'EndDate',
+      ) => Promise<{ error: string }>
+
       getProcurementTimeline: (
         workbookPath: string,
         procurementRef: string,

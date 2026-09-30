@@ -21,6 +21,9 @@ import {
   Pencil,
   MessageSquare,
   X,
+  Square,
+  Calendar,
+  AlertTriangle,
 } from 'lucide-react'
 import {
   type Supplier,
@@ -145,6 +148,41 @@ function getProcurementTimeIndicator(
     label: daysRemaining > 0 ? `${pluralDays(daysRemaining)} remaining` : 'Ends today',
     percentUsed: null,
   }
+}
+
+function checkProcurementExpiry(proc: Procurement | null | undefined): {
+  isExpired: boolean
+  endDateText: string
+  daysAgo: number
+  dateField: 'HarvestPeriodEnd' | 'EndDate'
+  label: string
+} {
+  if (!proc || proc.Status === 'Completed' || proc.Status === 'Cancelled') {
+    return { isExpired: false, endDateText: '', daysAgo: 0, dateField: 'EndDate', label: '' }
+  }
+
+  const usesHarvest = Boolean(proc.HarvestPeriodStart || proc.HarvestPeriodEnd)
+  const endDateStr = (usesHarvest && proc.HarvestPeriodEnd ? proc.HarvestPeriodEnd : proc.EndDate) || ''
+  const end = parseLedgerDate(endDateStr)
+  if (!end) {
+    return { isExpired: false, endDateText: '', daysAgo: 0, dateField: 'EndDate', label: '' }
+  }
+
+  const today = new Date()
+  const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  if (end < todayMidnight) {
+    const dayMs = 24 * 60 * 60 * 1000
+    const daysAgo = Math.max(1, Math.round((todayMidnight.getTime() - end.getTime()) / dayMs))
+    return {
+      isExpired: true,
+      endDateText: endDateStr,
+      daysAgo,
+      dateField: usesHarvest && proc.HarvestPeriodEnd ? 'HarvestPeriodEnd' : 'EndDate',
+      label: usesHarvest ? 'Harvest Period' : 'Agreement Period',
+    }
+  }
+
+  return { isExpired: false, endDateText: '', daysAgo: 0, dateField: 'EndDate', label: '' }
 }
 
 type GradeRowState = {
@@ -439,6 +477,25 @@ export function ProcurementsTab({
   // Grade row deletion safety prompt
   const [deleteConfirmRowIdx, setDeleteConfirmRowIdx] = useState<number | null>(null)
 
+  // Stop & Complete procurement modal state
+  const [isStopModalOpen, setIsStopModalOpen] = useState(false)
+  const [stopReasonNotes, setStopReasonNotes] = useState('')
+  const [isStoppingProc, setIsStoppingProc] = useState(false)
+
+  // Expired date range prompt state
+  const [dismissedExpiryRefs, setDismissedExpiryRefs] = useState<Set<string>>(new Set())
+  const [isExpiryPromptOpen, setIsExpiryPromptOpen] = useState(false)
+  const [expiryProc, setExpiryProc] = useState<Procurement | null>(null)
+  const [expiryInfo, setExpiryInfo] = useState<{
+    endDateText: string
+    daysAgo: number
+    dateField: 'HarvestPeriodEnd' | 'EndDate'
+    label: string
+  }>({ endDateText: '', daysAgo: 0, dateField: 'EndDate', label: '' })
+  const [extensionDateDraft, setExtensionDateDraft] = useState('')
+  const [closeOffNotes, setCloseOffNotes] = useState('')
+  const [isProcessingExpiryAction, setIsProcessingExpiryAction] = useState(false)
+
   useEffect(() => {
     if (activeGradeMenuIdx === null) return
     const handleClickOutside = (e: MouseEvent) => {
@@ -578,6 +635,136 @@ export function ProcurementsTab({
     // procurements is listed so the grades refresh after a save
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workbookPath, selectedProcRef, procurements])
+
+  // Check if current active procurement has expired date range
+  useEffect(() => {
+    if (!selectedProcurement || selectedProcurement.Status === 'Completed') {
+      setIsExpiryPromptOpen(false)
+      return
+    }
+    const ref = selectedProcurement.ProcurementRef
+    if (dismissedExpiryRefs.has(ref)) return
+
+    const info = checkProcurementExpiry(selectedProcurement)
+    if (info.isExpired) {
+      setExpiryProc(selectedProcurement)
+      setExpiryInfo(info)
+      // Provide an extension date default (30 days from today)
+      const future = new Date()
+      future.setDate(future.getDate() + 30)
+      const yyyy = future.getFullYear()
+      const mm = String(future.getMonth() + 1).padStart(2, '0')
+      const dd = String(future.getDate()).padStart(2, '0')
+      setExtensionDateDraft(`${yyyy}-${mm}-${dd}`)
+      setCloseOffNotes('')
+      setIsExpiryPromptOpen(true)
+    }
+  }, [selectedProcurement, dismissedExpiryRefs])
+
+  function openStopPrompt() {
+    setStopReasonNotes('')
+    setIsStopModalOpen(true)
+  }
+
+  async function handleConfirmStopProcurement() {
+    if (!selectedProcRef) return
+    setIsStoppingProc(true)
+    setErrorMsg('')
+    try {
+      const res = await window.logPro.completeProcurement(
+        workbookPath,
+        selectedProcRef,
+        {
+          reason: 'Manual Early Stop',
+          notes: stopReasonNotes.trim(),
+        },
+      )
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`Procurement ${selectedProcRef} was stopped, completed, and archived to Price History.`)
+        setIsStopModalOpen(false)
+        setMode('blank')
+        setSelectedProcRef(null)
+        loadData()
+        onDataChanged?.()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to stop procurement.')
+    } finally {
+      setIsStoppingProc(false)
+    }
+  }
+
+  async function handleConfirmExtendExpiry() {
+    if (!expiryProc || !extensionDateDraft) return
+    setIsProcessingExpiryAction(true)
+    setErrorMsg('')
+    try {
+      const res = await window.logPro.extendProcurementDate(
+        workbookPath,
+        expiryProc.ProcurementRef,
+        extensionDateDraft,
+        expiryInfo.dateField,
+      )
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`Agreement ${expiryProc.ProcurementRef} date extended to ${extensionDateDraft}.`)
+        if (expiryInfo.dateField === 'HarvestPeriodEnd') {
+          setHarvestPeriodEnd(extensionDateDraft)
+        } else {
+          setEndDate(extensionDateDraft)
+        }
+        setIsExpiryPromptOpen(false)
+        setDismissedExpiryRefs((prev) => new Set(prev).add(expiryProc.ProcurementRef))
+        loadData()
+        onDataChanged?.()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to extend date.')
+    } finally {
+      setIsProcessingExpiryAction(false)
+    }
+  }
+
+  async function handleConfirmCloseOffExpiry() {
+    if (!expiryProc) return
+    setIsProcessingExpiryAction(true)
+    setErrorMsg('')
+    try {
+      const res = await window.logPro.completeProcurement(
+        workbookPath,
+        expiryProc.ProcurementRef,
+        {
+          reason: 'Date Range Expired & Closed Off',
+          notes: closeOffNotes.trim(),
+        },
+      )
+      if (res.error) {
+        setErrorMsg(res.error)
+      } else {
+        setSuccessMsg(`Procurement ${expiryProc.ProcurementRef} has ended and moved to Price History.`)
+        setIsExpiryPromptOpen(false)
+        setDismissedExpiryRefs((prev) => new Set(prev).add(expiryProc.ProcurementRef))
+        setMode('blank')
+        setSelectedProcRef(null)
+        loadData()
+        onDataChanged?.()
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Failed to close off agreement.')
+    } finally {
+      setIsProcessingExpiryAction(false)
+    }
+  }
+
+  function handleDismissExpiryPrompt() {
+    if (expiryProc) {
+      setDismissedExpiryRefs((prev) => new Set(prev).add(expiryProc.ProcurementRef))
+    }
+    setIsExpiryPromptOpen(false)
+  }
 
   // ---------------- Leaving a form safely ----------------
 
@@ -1290,9 +1477,12 @@ if (window.logPro?.addProcurementNote) {
     setDetectedPriceChanges([])
   }
 
-  // Filtered procurements for register table
+  // Filtered procurements for register table (Completed contracts drop off to Price History)
   const filteredProcurements = useMemo(() => {
     return procurements.filter((p) => {
+      // Completed procurements drop off the active ledger
+      if (p.Status === 'Completed') return false
+
       // Search text
       if (!registerSearch.trim()) return true
       const q = registerSearch.toLowerCase()
@@ -2054,7 +2244,29 @@ if (window.logPro?.addProcurementNote) {
               onChange={() => setIsDirty(true)}
             >
               {mode === 'edit' && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={openStopPrompt}
+                    style={{
+                      width: 'auto',
+                      height: '34px',
+                      padding: '0 14px',
+                      background: '#fff1f2',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '6px',
+                      color: '#be123c',
+                      fontWeight: 600,
+                      fontSize: '0.84rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    title="Stop this procurement early and conclude agreement"
+                  >
+                    <Square size={13} fill="#be123c" /> Stop Procurement
+                  </button>
                   <div style={{ position: 'relative' }}>
                     <button
                       type="button"
@@ -2087,7 +2299,7 @@ if (window.logPro?.addProcurementNote) {
                           borderRadius: '6px',
                           boxShadow: '0 4px 12px rgba(15,23,42,0.15)',
                           zIndex: 20,
-                          minWidth: '190px',
+                          minWidth: '220px',
                         }}
                       >
                         <button
@@ -2112,6 +2324,30 @@ if (window.logPro?.addProcurementNote) {
                           }}
                         >
                           <Plus size={14} /> Save as New (Duplicate)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsProcMenuOpen(false)
+                            openStopPrompt()
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 14px',
+                            background: 'transparent',
+                            border: 'none',
+                            borderTop: '1px solid #f1f5f9',
+                            color: '#be123c',
+                            fontWeight: 600,
+                            fontSize: '0.85rem',
+                            textAlign: 'left',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Square size={13} fill="#be123c" /> Stop / Complete Agreement
                         </button>
                         <button
                           type="button"
@@ -3540,6 +3776,30 @@ if (window.logPro?.addProcurementNote) {
                   borderTop: '1px solid var(--border)',
                 }}
               >
+                {mode === 'edit' && (
+                  <button
+                    type="button"
+                    onClick={openStopPrompt}
+                    style={{
+                      width: 'auto',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 16px',
+                      background: '#fff1f2',
+                      color: '#be123c',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '0px',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                    }}
+                    title="Stop this procurement early and conclude agreement"
+                  >
+                    <Square size={14} fill="#be123c" /> Stop Procurement
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={handleCancelForm}
@@ -4078,6 +4338,402 @@ if (window.logPro?.addProcurementNote) {
         supplierName={currentSupplier?.SupplierName || ''}
         changes={detectedPriceChanges}
       />
+
+      {/* Stop & Complete Procurement Modal */}
+      {isStopModalOpen && selectedProcurement && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="stop-procurement-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(15, 23, 42, 0.48)',
+            backdropFilter: 'blur(2px)',
+          }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !isStoppingProc) {
+              setIsStopModalOpen(false)
+            }
+          }}
+        >
+          <div
+            style={{
+              width: 'min(100%, 480px)',
+              background: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid var(--border)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.22)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                background: '#fff1f2',
+                borderBottom: '1px solid #fecdd3',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: '#ffe4e6',
+                    color: '#be123c',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Square size={18} fill="#be123c" />
+                </div>
+                <div>
+                  <h3 id="stop-procurement-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#9f1239' }}>
+                    Stop &amp; Complete Procurement
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#be123c' }}>
+                    {selectedProcurement.ProcurementRef}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStopModalOpen(false)}
+                disabled={isStoppingProc}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9f1239',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 14px', fontSize: '0.88rem', color: '#334155', lineHeight: 1.5 }}>
+                Stopping this agreement early marks it as <strong>Completed</strong>. It will drop off the active procurement ledger and its final rates and volume will be permanently recorded in <strong>Price History</strong>.
+              </p>
+
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                  fontSize: '0.84rem',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '8px',
+                }}
+              >
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Supplier
+                  </span>
+                  <strong>{currentSupplier?.SupplierName || `Supplier #${selectedProcurement.SupplierID}`}</strong>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--muted)', display: 'block', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Plantation
+                  </span>
+                  <strong>{selectedProcurement.Plantation || '—'}</strong>
+                </div>
+              </div>
+
+              <label
+                htmlFor="stop-procurement-notes"
+                style={{ display: 'block', marginBottom: '6px', fontSize: '0.84rem', fontWeight: 600, color: 'var(--text)' }}
+              >
+                Reason for Stopping / Completion Notes (Optional)
+              </label>
+              <textarea
+                id="stop-procurement-notes"
+                rows={3}
+                value={stopReasonNotes}
+                onChange={(e) => setStopReasonNotes(e.target.value)}
+                placeholder="e.g. Quota fulfilled ahead of time; Harvest concluded; Supplier requested early close..."
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.88rem',
+                  lineHeight: 1.4,
+                  resize: 'vertical',
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '10px',
+                padding: '14px 20px',
+                background: '#f8fafc',
+                borderTop: '1px solid #e2e8f0',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setIsStopModalOpen(false)}
+                disabled={isStoppingProc}
+                className="secondary-button"
+                style={{ width: 'auto', padding: '8px 16px', fontSize: '0.88rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStopProcurement}
+                disabled={isStoppingProc}
+                style={{
+                  width: 'auto',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 20px',
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  background: '#be123c',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: isStoppingProc ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <Square size={14} fill="#ffffff" />
+                {isStoppingProc ? 'Stopping...' : 'Confirm Stop & Archive'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expired Date Range Prompt Dialog */}
+      {isExpiryPromptOpen && expiryProc && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expiry-prompt-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            background: 'rgba(15, 23, 42, 0.48)',
+            backdropFilter: 'blur(2px)',
+          }}
+        >
+          <div
+            style={{
+              width: 'min(100%, 520px)',
+              background: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid var(--border)',
+              boxShadow: '0 20px 48px rgba(0, 0, 0, 0.22)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                background: '#fffbeb',
+                borderBottom: '1px solid #fef3c7',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: '#fef3c7',
+                    color: '#b45309',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <AlertTriangle size={18} />
+                </div>
+                <div>
+                  <h3 id="expiry-prompt-title" style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#92400e' }}>
+                    Procurement Date Range Expired
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#b45309' }}>
+                    {expiryProc.ProcurementRef} • {expiryInfo.label} ended {expiryInfo.daysAgo} {expiryInfo.daysAgo === 1 ? 'day' : 'days'} ago
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissExpiryPrompt}
+                disabled={isProcessingExpiryAction}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#92400e',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 16px', fontSize: '0.88rem', color: '#334155', lineHeight: 1.5 }}>
+                The scheduled {expiryInfo.label.toLowerCase()} for <strong>{expiryProc.ProcurementRef}</strong> expired on <strong>{expiryInfo.endDateText}</strong>.
+                You can choose to <strong>extend the date range</strong> to keep it active on the ledger, or <strong>close it off</strong> into Price History.
+              </p>
+
+              {/* Path 1: Extend Date */}
+              <div
+                style={{
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  background: '#f0f9ff',
+                  marginBottom: '14px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Calendar size={16} color="#0284c7" />
+                  <strong style={{ fontSize: '0.9rem', color: '#0369a1' }}>Option 1: Extend Agreement Date Range</strong>
+                </div>
+                <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: '#0284c7' }}>
+                  Set a new end date to keep this procurement active in your day-to-day ledger.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="date"
+                    value={extensionDateDraft}
+                    onChange={(e) => setExtensionDateDraft(e.target.value)}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #93c5fd',
+                      fontSize: '0.88rem',
+                      background: '#ffffff',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleConfirmExtendExpiry}
+                    disabled={isProcessingExpiryAction || !extensionDateDraft}
+                    className="btn-primary"
+                    style={{ width: 'auto', padding: '8px 16px', fontSize: '0.85rem' }}
+                  >
+                    {isProcessingExpiryAction ? 'Extending...' : 'Extend Date Range'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Path 2: Close Off */}
+              <div
+                style={{
+                  border: '1px solid #fed7aa',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  background: '#fff7ed',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Square size={14} fill="#ea580c" color="#ea580c" />
+                  <strong style={{ fontSize: '0.9rem', color: '#c2410c' }}>Option 2: Close Off &amp; Archive</strong>
+                </div>
+                <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: '#ea580c' }}>
+                  Mark this agreement as Completed. It will drop off the active ledger and save final rates to Price History.
+                </p>
+                <input
+                  type="text"
+                  placeholder="Optional final note (e.g. Harvest completed on schedule)"
+                  value={closeOffNotes}
+                  onChange={(e) => setCloseOffNotes(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #fdba74',
+                    fontSize: '0.85rem',
+                    background: '#ffffff',
+                    marginBottom: '10px',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleConfirmCloseOffExpiry}
+                  disabled={isProcessingExpiryAction}
+                  style={{
+                    width: 'auto',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    background: '#c2410c',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: isProcessingExpiryAction ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {isProcessingExpiryAction ? 'Closing Off...' : 'Close Off Agreement'}
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                padding: '12px 20px',
+                background: '#f8fafc',
+                borderTop: '1px solid #e2e8f0',
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleDismissExpiryPrompt}
+                disabled={isProcessingExpiryAction}
+                className="secondary-button"
+                style={{ width: 'auto', padding: '6px 14px', fontSize: '0.84rem' }}
+              >
+                Remind Me Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

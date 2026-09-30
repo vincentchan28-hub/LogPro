@@ -1506,8 +1506,6 @@ export function SettingsModal({
                       marginBottom: '12px',
                     }}
                   >
-  const [selectedSpeciesForGrade, setSelectedSpeciesForGrade] = useState('Radiata Pine')
-
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Trees size={14} className="muted" />
                       <select

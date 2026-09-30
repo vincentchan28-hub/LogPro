@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for adding the Stop/Complete Procurement feature, automatic expired date range detection dialog (with Extend Date or Close Off actions), active ledger completion filtering, and Price History completion archive.",
+  "updatedAt": "2026-09-30T12:10:57.765072118Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
